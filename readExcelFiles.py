@@ -1,7 +1,6 @@
 import xlrd
 
-#I try to keep the design open, however some functions have to be problem specific, they will come second in the file
-
+#reader and createDictionary handle the xlsx files that I need to work with
 def reader(filename,ind = 0):
 
 	#Reads in a file, for example 'Deck41_classified_final.xlsx'
@@ -24,16 +23,21 @@ def createDictionary(sheet):
 
 	return data
 
+#listByClassification can take in the dictionary from createDictionary, variable longitude or latitude etc. classifier is here 'Classification' (mud, ooze etc.), classifValue is 9 for mud
+def listByClassification(data,variable,classifier = 'Classification',classifValue = 9.0):
+	return [data[variable][i] for i in range(len(data[variable])) if data[classifier][i] == classifValue]
+
+
+
 def testing():
 	assert type(reader('Deck41_classified_final.xlsx')) == xlrd.sheet.Sheet
 	sheet = reader('Deck41_classified_final.xlsx')
 	data = createDictionary(sheet)
 	assert sheet.cell_value(0,0) in data
 	assert sheet.ncols == len(data)
+	assert len(listByClassification(data,'Longitude')) #There should me some measurements classified as mud
 	print 'Tests passed'
 
-#Problem specific function
-#
 #To do
 #
 #Find all points classified as mud
