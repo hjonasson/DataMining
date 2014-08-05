@@ -34,7 +34,11 @@ def findMudPoints(data):
 def assessPoint(data,dx,dy):
 
 	mudPoints = findMudPoints(data)
-	for point in mudp
+	for point in range(len(mudpoint['lon'])):
+		x = mudPoints['lon'][point]
+		y = mudPoints['lat'][point]
+		points = pointsInBox((x,y),data,dx,dy)
+		
 	#pseudocode
 	#
 	#for mudpoint
