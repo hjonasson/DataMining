@@ -12,7 +12,7 @@ def reader(filename,ind = 0):
 def createDictionary(sheet):
 
 	#Creates a dictionary to work with
-	#the first value of each column is the keys
+	#the first value of each column from the sheet gives the keys
 	
 	data = {}
 	metrics = lambda i : sheet.cell_value(0,i)
@@ -28,6 +28,44 @@ def listByClassification(data,variable,classifier = 'Classification',classifValu
 	return [data[variable][i] for i in range(len(data[variable])) if data[classifier][i] == classifValue]
 
 
+def findMudPoints(data):
+	return {'lon':listByClassification(data,'Longitude'),'lat':listByClassification(data,'Latitude')}
+
+def assessPoint(data,dx,dy):
+
+	mudPoints = findMudPoints(data)
+	for point in mudp
+	#pseudocode
+	#
+	#for mudpoint
+	#if criteria met
+	#change classification
+	#	file to be changed
+
+#Finds all points in a box of size 2dx*2dy around a given point, hierarcy: pointsInBox -> BoxedPoints
+def pointsInBox(centerPoint,data,dx,dy):
+	xmin = centerPoint[0] - dx
+	xmax = centerPoint[0] + dx
+	ymin = centerPoint[1] - dy
+	ymax = centerPoint[1] + dy
+	boxed = boxedPoints(data,xmin,xmax,ymin,ymax)
+	return boxed
+
+def boxedPoints(data,xmin,xmax,ymin,ymax):
+	
+	boxed = {'lon'=[],'lat'=[],'classif'=[],'ind'=[]}
+	for i in range(len(data['Longitude'])):
+		x = data['Longitude'][i]
+		y = data['Latitude'][i]
+		if x > xmin:
+			if x < xmax:
+				if y > ymin:
+					if y < ymax:
+						boxed['lon'].append(x)
+						boxed['lat'].append(y)
+						boxed['classif'].append(data['Classification'][i])
+						boxed['ind'].append(i)						
+	return boxed
 
 def testing():
 	assert type(reader('Deck41_classified_final.xlsx')) == xlrd.sheet.Sheet
@@ -35,7 +73,8 @@ def testing():
 	data = createDictionary(sheet)
 	assert sheet.cell_value(0,0) in data
 	assert sheet.ncols == len(data)
-	assert len(listByClassification(data,'Longitude')) #There should me some measurements classified as mud
+	assert len(listByClassification(data,'Longitude')) 	#There should me some measurements classified as mud
+	assert len(findMudPoints(data)) == 2 				#For latitude and longitude
 	print 'Tests passed'
 
 #To do
@@ -46,10 +85,7 @@ def testing():
 #Define criteria for changing mud classification
 #If criteria met, change mud classification
 
-#def findMudPoints()
-#	gives a list of mud points
-#def pointsInBox()
-#	finds all points in a box around mud point i
+
 #def criteria()
 #	assesses whether the points in box allow mud point to be reclassified
 #def rewrite()
