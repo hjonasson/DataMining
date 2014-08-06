@@ -1,3 +1,4 @@
+from collections import Counter
 import re
 
 #readTxt reads in the three column data files, the headers start with >, so they are filtered out by that
@@ -37,22 +38,22 @@ def filterClassification(data,filt=9):
 			filteredData['ind'].append(data['ind'][i])
 	return filteredData
 
-def classifyPoints(data,dx,dy,filt=9):
+#classifyPoints returns the points that need to be changed in a file and their lineNr
+def classifyPoints(data,dx,dy,minNr,filt=9):
 	
 	filteredData = filterClassification(data,filt)
+	changes = {'ind':[],'newClass':[]}
 	for i in range(len(filteredData['lon'])):
 		x = data['lon'][i]
 		y = data['lat'][i]
 		centerPoint = (x,y)
 		box = pointsInBox(centerPoint,data,dx,dy)
-		#call classifyBox
-
-	#return a list of points that need to be changed in the file
-	#give this to a function that makes an altered file
-	return True
-
-
-
+		classify = classifyBox(box,minNr)
+		if classify != False
+			#add to a list of changes to be made
+			changes['ind'].append(data['ind'][i])
+			changes['newClass'].append(classify)
+	return changes
 
 
 
@@ -62,10 +63,16 @@ def classifyPoints(data,dx,dy,filt=9):
 
 
 
+#As for now, the classification is such that if there are minNr of points of a certain classification in the box, then the point is changed to that
+def classifyBox(box, minNr):
 
-def classifyBox(box):
-	#find out what to do here
-	return True
+	classif = box['classif']
+	mostCommon = max(set(classif),key=classif.count)
+	nrOfMostCommon = classif.count(mostCommon)
+	if nrOfMostCommon >= minNr:
+		return mostCommon
+	else:
+		return False
 
 #Finds all points in a box of size 2dx*2dy around a given point, hierarcy: pointsInBox -> BoxedPoints
 def pointsInBox(centerPoint,data,dx,dy):
