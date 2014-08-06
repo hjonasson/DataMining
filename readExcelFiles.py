@@ -22,9 +22,6 @@ def readTxt(filename):
 
 #Todo
 #
-#Use filtered classification and make boxes around
-#Find all points in the box
-#Assess the points in the box
 #Rewrite the file
 
 def filterClassification(data,filt=9):
@@ -55,7 +52,20 @@ def classifyPoints(data,dx,dy,minNr,filt=9):
 			changes['newClass'].append(classify)
 	return changes
 
+def rewrite(filename,changes):
 
+	f = open(filename)
+	lines = f.readlines()
+	count = 0
+	for i in changes['ind']:
+		splitLine = re.split(r'\t+',lines[i].strip())
+		splitLine[2] = str(changes['newClass'][count])
+		lines[i] = splitLine[0] + '\t' + splitLine[1] + '\t' + splitLine[2] + '\n'
+	newFileName = filename[:-4] + 'new' + '.txt'
+	g = open(newFileName,'w')
+	for line in lines:
+		g.write(line)
+	g.close 
 
 
 
