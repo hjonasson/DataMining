@@ -1,6 +1,4 @@
 import re
-import xlrd
-
 
 #readTxt reads in the three column data files, the headers start with >, so they are filtered out by that
 #All line numbers are kept in order so later the files can be altered in an easy manner
@@ -23,13 +21,12 @@ def readTxt(filename):
 
 #Todo
 #
-#Filter classification (mud)
 #Use filtered classification and make boxes around
 #Find all points in the box
 #Assess the points in the box
 #Rewrite the file
 
-def filterClassification(data,filter):
+def filterClassification(data,filt=9):
 
 	filteredData = {'lon':[],'lat':[],'classif':[],'ind':[]}
 	for i in range(len(data['lon'])):
@@ -40,38 +37,35 @@ def filterClassification(data,filter):
 			filteredData['ind'].append(data['ind'][i])
 	return filteredData
 
-
-#reader and createDictionary handle the xlsx files that I need to work with
-def reader(filename,ind = 0):
-
-	#Reads in a file, for example 'Deck41_classified_final.xlsx'
-	#returns sheet number ind, the first sheet if unspecified
+def classifyPoints(data,dx,dy,filt=9):
 	
-	workbook = xlrd.open_workbook(filename)
-	return workbook.sheet_by_index(ind)
+	filteredData = filterClassification(data,filt)
+	for i in range(len(filteredData['lon'])):
+		x = data['lon'][i]
+		y = data['lat'][i]
+		centerPoint = (x,y)
+		box = pointsInBox(centerPoint,data,dx,dy)
+		#call classifyBox
 
-def createDictionary(sheet):
-
-	#Creates a dictionary to work with
-	#the first value of each column from the sheet gives the keys
-	
-	data = {}
-	metrics = lambda i : sheet.cell_value(0,i)
-	values = lambda i: [sheet.cell_value(j,i) for j in range(1,sheet.nrows)]
-
-	for i in range(sheet.ncols):
-		data[metrics(i)] = values(i)
-
-	return data
+	#return a list of points that need to be changed in the file
+	#give this to a function that makes an altered file
+	return True
 
 
-#listByClassification can take in the dictionary from createDictionary, variable longitude or latitude etc. classifier is here 'Classification' (mud, ooze etc.), classifValue is 9 for mud
-def listByClassification(data,variable,classifier = 'Classification',classifValue = 9.0):
-	return [data[variable][i] for i in range(len(data[variable])) if data[classifier][i] == classifValue]
 
 
-def findMudPoints(data):
-	return {'lon':listByClassification(data,'Longitude'),'lat':listByClassification(data,'Latitude')}
+
+
+
+
+
+
+
+
+
+def classifyBox(box):
+	#find out what to do here
+	return True
 
 #Finds all points in a box of size 2dx*2dy around a given point, hierarcy: pointsInBox -> BoxedPoints
 def pointsInBox(centerPoint,data,dx,dy):
@@ -82,42 +76,20 @@ def pointsInBox(centerPoint,data,dx,dy):
 	boxed = boxedPoints(data,xmin,xmax,ymin,ymax)
 	return boxed
 
+#boxedPoints gives a dictionary of all points within a certain box on the map
 def boxedPoints(data,xmin,xmax,ymin,ymax):
 	
 	boxed = {'lon':[],'lat':[],'classif':[],'ind':[]}
-	for i in range(len(data['Longitude'])):
-		x = data['Longitude'][i]
-		y = data['Latitude'][i]
+	for i in range(len(data['lon'])):
+		x = data['lon'][i]
+		y = data['lat'][i]
 		if x > xmin:
 			if x < xmax:
 				if y > ymin:
 					if y < ymax:
 						boxed['lon'].append(x)
 						boxed['lat'].append(y)
-						boxed['classif'].append(data['Classification'][i])
+						boxed['classif'].append(data['classif'][i])
 						boxed['ind'].append(i)						
 	return boxed
 
-def testing():
-	assert type(reader('Deck41_classified_final.xlsx')) == xlrd.sheet.Sheet
-	sheet = reader('Deck41_classified_final.xlsx')
-	data = createDictionary(sheet)
-	assert sheet.cell_value(0,0) in data
-	assert sheet.ncols == len(data)
-	assert len(listByClassification(data,'Longitude')) 	#There should me some measurements classified as mud
-	assert len(findMudPoints(data)) == 2 				#For latitude and longitude
-	print 'Tests passed'
-
-#To do
-#
-#Find all points classified as mud
-#Make a window around it
-#Find all points in the window
-#Define criteria for changing mud classification
-#If criteria met, change mud classification
-
-
-#def criteria()
-#	assesses whether the points in box allow mud point to be reclassified
-#def rewrite()
-#	makes a new file to me handed to the gmt
