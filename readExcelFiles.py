@@ -3,6 +3,12 @@ import re
 
 #readTxt reads in the three column data files, the headers start with >, so they are filtered out by that
 #All line numbers are kept in order so later the files can be altered in an easy manner
+
+dataFile = 'seabed_lithology_v4.txt'
+dx = 10
+dy = 10
+minNr = 20
+
 def readTxt(filename):
 
 	data = {'lon':[],'lat':[],'classif':[],'ind':[]}
@@ -20,9 +26,6 @@ def readTxt(filename):
 		lineNr += 1
 	return data
 
-#Todo
-#
-#Rewrite the file
 
 def filterClassification(data,filt=9):
 
@@ -50,6 +53,7 @@ def classifyPoints(data,dx,dy,minNr,filt=9):
 			#add to a list of changes to be made
 			changes['ind'].append(data['ind'][i])
 			changes['newClass'].append(classify)
+	print 'Changes to be made are '+str(len(changes['ind']))
 	return changes
 
 def rewrite(filename,changes):
@@ -61,17 +65,12 @@ def rewrite(filename,changes):
 		splitLine = re.split(r'\t+',lines[i].strip())
 		splitLine[2] = str(changes['newClass'][count])
 		lines[i] = splitLine[0] + '\t' + splitLine[1] + '\t' + splitLine[2] + '\n'
+		count += 1
 	newFileName = filename[:-4] + 'new' + '.txt'
 	g = open(newFileName,'w')
 	for line in lines:
 		g.write(line)
 	g.close 
-
-
-
-
-
-
 
 #As for now, the classification is such that if there are minNr of points of a certain classification in the box, then the point is changed to that
 def classifyBox(box, minNr):
@@ -110,3 +109,6 @@ def boxedPoints(data,xmin,xmax,ymin,ymax):
 						boxed['ind'].append(i)						
 	return boxed
 
+data = readTxt(dataFile)
+changes = classifyPoints(data,dx,dy,minNr)
+rewrite(dataFile,changes)
