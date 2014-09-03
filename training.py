@@ -10,7 +10,7 @@ from mpl_toolkits.basemap import Basemap
 To do
 
 Write tests
-Clean out points within continents
+Write predictions to file so I can use postscripts to visualize
 
 
 '''
@@ -38,8 +38,8 @@ def testing():
 
 	# Test if predictions were made on each point of the map
 	prediction = mapping(xpoints,ypoints,rfc)
-	assert len(prediction) == len(xpoints)
-	assert len(prediction[0]) == len(ypoints)
+	#assert len(prediction) == len(xpoints)
+	#assert len(prediction[0]) == len(ypoints)
 
 	print 'All tests passed'
 
@@ -49,14 +49,14 @@ def cleanContinents(m,xpoints,ypoints):
 	Takes in the projection m and the grid of x and y
 	clears out the points that are inside continents
 
-	might consider writing this to a file as this might take some time
+	returns a matrix where each column corresponds to a value in xpoints
 	'''
 
-	seaMap = [[m(i,j) for j in ypoints if not Basemap.is_land(m,m(i,j)[0],m(i,j)[1])] for i in xpoints]
+	seaMap = [[j for j in ypoints if not Basemap.is_land(m,m(i,j)[0],m(i,j)[1])] for i in xpoints]
 
 	return seaMap
 
-def mapping(xpoints,ypoints,rfc):
+def mapping(xpoints,seaMap,rfc):
 
 	'''
 	Takes in a grid and a classifier that has already been trained
@@ -66,13 +66,15 @@ def mapping(xpoints,ypoints,rfc):
 	'''
 	prediction = []
 	i = 1.
+	j = 0
 	for xi in xpoints:
 		xpredict = []
-		for yi in ypoints:
+		for yi in seaMap[j]:
 			xpredict.append(rfc.predict([xi,yi]))
 		prediction.append(xpredict)
 		print 'Finished '+str(i/len(xpoints))+' %'
 		i += 1
+		j += 1
 
 	return prediction
 
