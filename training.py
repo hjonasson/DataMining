@@ -1,6 +1,10 @@
 import re
-from sklearn.ensamble import RandomForestClassifier
+from sklearn.ensemble import RandomForestClassifier
 import numpy as np
+import os
+import sklearn
+from mpl_toolkits.basemap import Basemap
+
 
 '''
 To do
@@ -12,19 +16,56 @@ Clean out points within continents
 '''
 
 def testing():
+
+	# Test if the test file is in the directory
+	filename = 'seabed_lithology_v4.txt'
+	assert os.path.exists(filename)
+
+	# Test if there is any data in the file
+	rawData = readTxt(filename)
+	assert rawData['lon']
+
+	# Test if random forest classifier is not empty
+	rfc = training(rawData)
+	assert type(rfc[0]) == sklearn.tree.tree.DecisionTreeClassifier
+
+	# Test if there are points left after cleaning put continents
+	xpoints = np.arange(-180,180,90)
+	ypoints = np.arange(-90,90,45)
+	m = Basemap(projection='merc',llcrnrlat=-80,urcrnrlat=80,\
+            llcrnrlon=-180,urcrnrlon=180,lat_ts=20,resolution='c')
+	seaMap = cleanContinents(m,xpoints,xpoints)
+
+	# Test if predictions were made on each point of the map
+	prediction = mapping(xpoints,ypoints,rfc)
+	assert len(prediction) == len(xpoints)
+	assert len(prediction[0]) == len(ypoints)
+
 	print 'All tests passed'
+
+def cleanContinents(m,xpoints,ypoints):
+
+	'''
+	Takes in the projection m and the grid of x and y
+	clears out the points that are inside continents
+
+	might consider writing this to a file as this might take some time
+	'''
+
+	seaMap = [[m(i,j) for j in ypoints if not Basemap.is_land(m,m(i,j)[0],m(i,j)[1])] for i in xpoints]
+
+	return seaMap
 
 def mapping(xpoints,ypoints,rfc):
 
-'''
-Takes in a grid and a classifier that has already been trained
-uses the classifier to predict values on the grid
+	'''
+	Takes in a grid and a classifier that has already been trained
+	uses the classifier to predict values on the grid
 
-the grid is in vectors (x=[-180...180] for example)
-'''
-
+	the grid is in vectors (x=[-180...180] for example)
+	'''
 	prediction = []
-	i = 0.
+	i = 1.
 	for xi in xpoints:
 		xpredict = []
 		for yi in ypoints:
@@ -37,12 +78,12 @@ the grid is in vectors (x=[-180...180] for example)
 
 def readTxt(filename):
 
-'''
-Takes in a filename of a three column format and gives
-the data from it in a dictionary
+	'''
+	Takes in a filename of a three column format and gives
+	the data from it in a dictionary
 
-seabed_lithology_v4.txt for example
-'''
+	seabed_lithology_v4.txt for example
+	'''
 
 	data = {'lon':[],'lat':[],'classif':[],'ind':[]}
 	f = open(filename)
@@ -61,16 +102,37 @@ seabed_lithology_v4.txt for example
 
 def training(rawData):
 
-'''
-Takes in the data from readTxt and sorts it to the format ML
-package wants, then trains a classifier
-'''
+	'''
+	Takes in the data from readTxt and sorts it to the format ML
+	package wants, then trains a classifier
+	'''
 
-		data = [[rawData['lon'][i] , rawData['lat'][i]] for i in range(len(rawData['lon']))]
-		labels = rawData['classif']
-		rfc = RandomForestClassifier(n_estimators=100)
-		rfc.fit(data, labels)
-		return rfc
+	data = [[rawData['lon'][i] , rawData['lat'][i]] for i in range(len(rawData['lon']))]
+	labels = rawData['classif']
+	rfc = RandomForestClassifier(n_estimators=100)
+	rfc.fit(data, labels)
+	return rfc
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 '''
 m = Basemap(projection='merc',llcrnrlat=-80,urcrnrlat=80,\
             llcrnrlon=-180,urcrnrlon=180,lat_ts=20,resolution='c') #resolution can be c,l,i,h,f
