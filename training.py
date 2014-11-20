@@ -3,22 +3,22 @@ from sklearn.ensemble import RandomForestClassifier
 import numpy as np
 import os
 import sklearn
+import readFullData
 from mpl_toolkits.basemap import Basemap
 
 
 '''
 To do
 
-Write tests
-Write predictions to file so I can use postscripts to visualize
-
+Check statistics
+Make map
 
 '''
 
 def testing():
 
 	# Test if the test file is in the directory
-	filename = 'seabed_lithology_v4.txt'
+	filename = 'GMTfiles/seabed_lithology_v4.txt'
 	assert os.path.exists(filename)
 
 	# Test if there is any data in the file
@@ -35,13 +35,81 @@ def testing():
 	m = Basemap(projection='merc',llcrnrlat=-80,urcrnrlat=80,\
             llcrnrlon=-180,urcrnrlon=180,lat_ts=20,resolution='c')
 	seaMap = cleanContinents(m,xpoints,xpoints)
+	for i in seaMap: assert len(ypoints) >= len(i)
 
 	# Test if predictions were made on each point of the map
-	prediction = mapping(xpoints,ypoints,rfc)
-	#assert len(prediction) == len(xpoints)
-	#assert len(prediction[0]) == len(ypoints)
+	prediction = mapping(xpoints,seaMap,rfc)
+	for i in range(len(prediction)): assert len(prediction[i]) == len(seaMap[i])
 
+	#Tests have passed
 	print 'All tests passed'
+
+#This is a file that produces the correct raster images and will serve as a prototype for automation
+
+def makeMap(dx,dataFile = 'seabed_lithology_regular_grid.txt',newFilename = 'seabed_raster.sh'):
+	g = open(newFilename,'w')
+	print 'Writing postscript file'
+	g.write('#!/bin/zsh\n')
+	g.write('gmt gmtset GRID_PEN_PRIMARY 0.25p\n')
+	g.write('\n')
+	g.write('version=2\n')
+	g.write('\n')
+	g.write('region=-180/180/-75/75\n')
+	g.write('color=seabed_lithology.cpt\n')
+	g.write('psfile=seabed_lithology_reviewed_all_v$version.ps\n')
+	g.write('infile1='+dataFile+'\n')
+	g.write('scalepar="-D0/-0.4/10.0/1"\n')
+	g.write('\n')
+	g.write('gmt xyz2grd -Rd $infile1 -Gtest.nc -I'+str(dx)+'d -V\n')
+	g.write('gmt grdimage -R$region -JM26 test.nc -C$color -V -X2.5 -Y2 -K > $psfile\n')
+	g.write('gmt pscoast -R$region -JM26 -B30g10/10g10WeSn -Di -I1 -W1 -G220 -O -K >> $psfile\n')
+	g.write('gmt psxy PB2002_boundaries.xy -R -J -W2 -m -O -K >> $psfile\n')
+	g.write('gmt psxy LIPS.xy -R -J -W2 -m -O >> $psfile\n')
+	g.write('gmt ps2raster -Tj $psfile -A -V \n')
+	g.write('\n')
+	g.write('open $psfile\n')
+	g.close()
+
+
+
+def running(dx,dy,filename = 'GMTfiles/seabed_lithology_v4.txt'):
+
+	xpoints = np.arange(-180,180,dx)
+	ypoints = np.arange(-90+dy,90,dy)
+	#rawData = readTxt(filename)
+	rawData = readFullData.readCols(filename)
+	rfc = training(rawData)
+	m = Basemap(projection='merc',llcrnrlat=-90,urcrnrlat=90,\
+				llcrnrlon=-180,urcrnrlon=180,lat_ts=5,resolution='c')#res c,l,i,h,f, has big effects on efficiency
+	seaMap = cleanContinents(m,xpoints,ypoints)
+	prediction = mapping(xpoints,seaMap,rfc)
+	writePredictions(xpoints,seaMap,prediction, header = '> Predictions made with training.py',newFilename = 'seabed_lithology_regular_grid.txt')
+	makeMap(dx)
+	gmtMap()
+
+def gmtMap(filename='seabed_raster.sh',makeExecutable = True):
+
+	if makeExecutable:
+		os.system('chmod +x '+filename)
+	os.system('./'+filename)		
+
+def writePredictions(xpoints,seaMap,prediction,header = '> Predictions made with training.py',newFilename = 'seabed_lithology_regular_grid.txt'):
+
+	g = open(newFilename,'w')
+	newline = '\n'
+	g.write(header)
+	g.write(newline)
+	for i in range(len(xpoints)):
+		xi = xpoints[i]
+		for j in range(len(seaMap[i])):
+			yi = seaMap[i][j]
+			prei = prediction[i][j][0]
+			line = str(xi) + ' ' + str(yi) + ' ' + str(prei) +newline
+			g.write(line)
+	g.close 
+
+
+
 
 def cleanContinents(m,xpoints,ypoints):
 
