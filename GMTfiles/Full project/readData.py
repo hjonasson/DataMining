@@ -30,17 +30,13 @@ def readTxt(filename):
 	seabed_lithology_v4.txt for example
 	'''
 
-	data = {'lon':[],'lat':[],'classif':[],'ind':[]}
+	data = {'lon':[],'lat':[],'classif':[]}
 	f = open(filename)
 	lines = f.readlines()
-	lineNr = 0
 	for line in lines:
 		if line[0] != '>':
-			splitLine = re.split(r'\t+',line.strip())
-			if len(splitLine) == 3:
-				data['lon'].append(float(splitLine[0]))
-				data['lat'].append(float(splitLine[1]))
-				data['classif'].append(int(splitLine[2]))
-				data['ind'].append(lineNr)
-		lineNr += 1
+			splitLine = re.split(r'\t+',line.strip())[0].split()
+			data['lon'].append(float(splitLine[0]))
+			data['lat'].append(float(splitLine[1]))
+			data['classif'].append(float(splitLine[2]))
 	return data
