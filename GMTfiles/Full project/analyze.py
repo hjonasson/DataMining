@@ -7,6 +7,8 @@ import itertools
 import matplotlib.pyplot as plt; plt.rcdefaults()
 import numpy as np
 import matplotlib.pyplot as plt
+import math
+
 
 
 '''
@@ -68,6 +70,40 @@ def readTxt1Deg(filename):
 		if line[0] != '>':
 			splitLine = re.split(r'\t+',line.strip())[0].split()
 			if not float(splitLine[0]) % 1 and not float(splitLine[1]) % 1:
+				data['lon'].append(float(splitLine[0]))
+				data['lat'].append(float(splitLine[1]))
+				data['classif'].append(float(splitLine[2]))
+	return data
+
+def hemisphere(hemi,y):
+	
+	if hemi == 'n':
+		if y >= 0:
+			return True
+		else:
+			return False
+	if hemi == 's':
+		if y <= 0:
+			return True
+		else:
+			return False
+
+def readTxt1DegHemi(filename,hemi):
+
+	'''
+	Takes in a filename of a three column format and gives
+	the data from it in a dictionary
+
+	seabed_lithology_v4.txt for example
+	'''
+
+	data = {'lon':[],'lat':[],'classif':[]}
+	f = open(filename)
+	lines = f.readlines()
+	for line in lines:
+		if line[0] != '>':
+			splitLine = re.split(r'\t+',line.strip())[0].split()
+			if not float(splitLine[0]) % 1 and not float(splitLine[1]) % 1 and hemisphere(hemi,float(splitLine[1])):
 				data['lon'].append(float(splitLine[0]))
 				data['lat'].append(float(splitLine[1]))
 				data['classif'].append(float(splitLine[2]))
@@ -406,7 +442,7 @@ def plotCaRange(classif,caco3,CaRange):
 			pltCaco3.append(caco3[i])
 	plotCa(pltClassif,pltCaco3)
 
-def boxplotCa(classif,caco3):
+def boxplotCa(classif,caco3,ytext,plotname,plotformat):
 
 	data = [[] for i in range(int(max(classif)))]
 	print len(data)
@@ -434,10 +470,10 @@ def boxplotCa(classif,caco3):
 		flier.set(marker = 'o',color = 'black',alpha = 0.4)
 
 	#ax.set_title('CaCO3 content in different sediments')
-	ax.set_ylabel('Ocean productivity [mgC / m**2 / day]')
+	ax.set_ylabel(ytext)
 	ax.set_xticklabels(classifications)
+	plt.savefig(plotname,format = plotformat)
 	plt.show()
-import math
 
 def updateCaData(filename = 'seabed_lithology_finegrid.txt'):
 
@@ -466,7 +502,8 @@ def plotBathymetry(rawDataPred,bathFile = 'ETOPO1_Bed_g_gmt4.grd'):
 		for yi in itertools.ifilter(lambda m: abs(by[m] - yd) < 1e-5,range(len(by))):
 			for xi in itertools.ifilter(lambda m: abs(bx[m] - xd) < 1e-5,range(len(bx))):
 				if isOcean(xd,yd):
-					data.append([rawDataPred['classif'][i],bz[yi][xi]])
+					if bz[yi][xi] < 0:
+						data.append([rawDataPred['classif'][i],bz[yi][xi]])
 		print float(i)/len(rawDataPred['classif'])
 	return data
 
@@ -493,8 +530,9 @@ def plotT(rawDataPred,TFile = 'temperaturenoNaN.txt'):
 		for j in itertools.ifilter(lambda m: abs(rDT['lat'][m] - yd) < 1e-5 and abs(rDT['lon'][m] - xd) <1e-5,range(len(rDT['lat']))):
 			print 'made it'
 			if isOcean(xd,yd):
-				data.append([rawDataPred['classif'][i],rDT['classif'][j]])
-				count += 1
+				if rDT['classif'][j] >= 0:
+					data.append([rawDataPred['classif'][i],rDT['classif'][j]])
+					count += 1
 		if count > 1:
 			print 'something wrong'
 		if not count:
@@ -515,6 +553,48 @@ def cleanNoPoints(filename):
 		if splitLine[2] != '-9999':
 			g.write(splitLine[0]+' '+splitLine[1]+' '+splitLine[2]+'\n')
 	g.close()
+
+
+def runBoxplots(filename,dataFile,ytext,plotname,plotformat,hemi):
+
+	rawDataPred = readTxt1DegHemi(filename,hemi)
+	data = plotT(rawDataPred,dataFile)
+	cl = [newClassif(i[0]) for i in data]
+	ba = [i[1] for i in data]
+	boxplotCa(cl,ba,ytext,plotname,plotformat)
+
+
+elements 	= ['nitrate' 	, 'phosphate'	, 'silicate']
+seasons 	= ['winter'		, 'summer']
+hemispheres	= {'winter' : 's', 'summer': 'n'}
+depths 		= [0 			, 10 			, 20	,30,50,75]
+levels		= {0 : '001' , 10 : '002' , 20 : '003' , 30 : '004' , 50 : '005' , 75 : '006'}
+
+def elementsBoxplots():
+
+	for element in elements:
+		for season in seasons:
+			summerHemisphere = hemispheres[season]
+				for depth in depths:
+					level = levels[depth]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
