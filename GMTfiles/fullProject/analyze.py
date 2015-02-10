@@ -379,8 +379,8 @@ def kriging(rawData,xpoints,ypoints):
 
 def cleanProd():
 
-	years = ['2004','2008','2012']
-	days = ['001', '032', '061', '092', '122', '153', '183', '214', '245', '275', '306', '336']
+	years = ['2014']
+	days = ['001','032','060','091','121','152','182', '213', '244', '274', '305']
 	for year in years:
 		print year
 		for day in days:
