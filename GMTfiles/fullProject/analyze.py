@@ -12,7 +12,7 @@ import math
 from pandas import DataFrame
 import pandas as pd
 from netCDF4 import Dataset
-
+import os
 
 '''
 Global constants
@@ -377,26 +377,6 @@ def kriging(rawData,xpoints,ypoints):
 		print float(i)/len(xpoints)
 	return mapped
 
-def cleanProd():
-
-	years = ['2014']
-	days = ['001','032','060','091','121','152','182', '213', '244', '274', '305']
-	for year in years:
-		print year
-		for day in days:
-			print day
-			filename = 'gmtplots/productivity/' + year + '/vgpm.' + year + day + '.all.xyz'	
-			f = open(filename)
-			g = open(filename+'clean','w')
-			lines = f.readlines()
-			for line in lines:
-				if line[0] != 'l':
-					splitLine = re.split(r'\t+',line.strip())[0].split()
-					if splitLine[2] != '-9999':
-						g.write(line)
-			g.close()
-
-
 
 '''
 klara cpt
@@ -411,8 +391,55 @@ def cptRanges(*files):
 
 		f = pd.io.excel.read_excel(File)
 
+def maskMaps():
+
+	seasons = ['winter','summer']
+	years = [str(i) for i in range(2002,2015)]
+	for year in years:
+		if year != '2002':
+			for season in seasons:
+				filename = 'gmtplots/productivity/'+season+year
+				if season is 'winter':
+					os.system('gmt grdsample '+filename+'.nc -Gtest.nc -I1 -R-180/180/-89/0')
+				else:
+					os.system('gmt grdsample '+filename+'.nc -Gtest.nc -I1 -R-180/180/0/89')
+				os.system('gmt grdmath test.nc gmtplots/productivity/'+season+'mask.nc OR = '+filename+'Masked.nc ')
+		else:
+			season = 'summer'
+			filename = 'gmtplots/productivity/'+season+year
+			os.system('gmt grdsample '+filename+'.nc -Gtest.nc -I1 -R-180/180/0/89')
+			os.system('gmt grdmath test.nc gmtplots/productivity/'+season+'mask.nc OR = '+filename+'Masked.nc ')
 
 
+
+def fullProdMaps():
+
+	leapYears = ['2004','2008','2012']
+	years= [str(year) for year in range(2003,2014) if year not in leapYears]
+	days = ['001','032','060','091','121','152','182', '213', '244', '274', '305','335']
+	leapDays = ['001','032','061','092','122','153','183', '214', '245', '275', '306','336']
+	maps = {year:days for year in years}
+	leapMaps = {year:leapDays for year in leapYears}
+	borderMaps = {'2002':days[6:],'2014':days[:-1]}
+	allMaps = dict(maps.items()+leapMaps.items()+borderMaps.items())
+	header = lambda m,s:'gmtplots/productivity/'+year+'/'+year+m+s+'.nc '
+	headers = lambda m,s:header(m[0],s)+header(m[1],s)+'ADD '+header(m[2],s)
+
+	for year in allMaps:
+		if year != '2002':
+			winter = allMaps[year][0:3]
+			summer = allMaps[year][6:9]
+			for month in winter:
+				os.system('gmt surface gmtplots/productivity/'+year+'/vgpm.'+year+month+'.all.xyzclean -Ggmtplots/productivity/'+year+'/'+year+month+'winter.nc -R-180/180/-89/89 -I1 -fg -Ll0')
+			for month in summer:
+				os.system('gmt surface gmtplots/productivity/'+year+'/vgpm.'+year+month+'.all.xyzclean -Ggmtplots/productivity/'+year+'/'+year+month+'summer.nc -R-180/180/-89/89 -I1 -fg -Ll0')
+			os.system('gmt grdmath '+headers(winter,'winter')+'ADD 0.33333 MUL = gmtplots/productivity/winter'+year+'.nc')
+			os.system('gmt grdmath '+headers(summer,'summer')+'ADD 0.33333 MUL = gmtplots/productivity/summer'+year+'.nc')
+		else:
+			summer = allMaps[year][0:3]
+			for month in summer:
+				os.system('gmt surface gmtplots/productivity/'+year+'/vgpm.'+year+month+'.all.xyzclean -Ggmtplots/productivity/'+year+'/'+year+month+'summer.nc -R-180/180/-89/89 -I1 -fg -Ll0')
+			os.system('gmt grdmath '+headers(summer,'summer')+'ADD 0.33333 MUL = gmtplots/productivity/summer'+year+'.nc')
 
 
 
