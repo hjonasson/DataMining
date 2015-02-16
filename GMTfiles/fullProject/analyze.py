@@ -157,7 +157,7 @@ def boxplotCa(classif,caco3,ytext,plotname,plotformat,res):
 	ax.yaxis.set_ticks_position('left')
 	ax.spines['left'].axis.axes.tick_params(direction = 'outward')
 
-	#plt.savefig(plotname,format = plotformat,dpi = 600)
+	plt.savefig(plotname,format = plotformat,dpi = res)
 	plt.savefig(plotname[:-3]+'.png',format = 'png',dpi = res)
 	plt.clf()
 
@@ -224,16 +224,13 @@ def plotElem(rawDataPred,rDT,xyCheck ,zCheck ):
 Looking at nitrate, phosphate and silicate at different depths
 '''
 
-elements 	= ['nitrate','silicate','phosphate']
-seasons 	= ['Winter'		, 'Summer']
-hemispheres	= {'Winter' : 's', 'Summer': 'n'}
 
 
 zmin = 30
 zmax = 40
 
 def allPlots(predFilename,TFile,salFile,oxyFile,res):
-	
+	print 'starting'	
 	'''
 	Global classifications
 	'''
@@ -279,38 +276,134 @@ def allPlots(predFilename,TFile,salFile,oxyFile,res):
 	Dissolved oxygen boxplot
 	'''
 
-	OxyData = readNetcdf(oxyFile,['lon','lat','z'],1,noCheck,)
-	Ocl,Oba = plotElem(rawDataPred,OxyData,noCheck,noCheck)
-	boxplotCa(Ocl,Oba,'Dissolved oxygen','gmtplots/boxplots/oxygenBoxplot.ps','ps',res)
+	#OxyData = readNetcdf(oxyFile,['lon','lat','z'],1,noCheck,noCheck)
+	#Ocl,Oba = plotElem(rawDataPred,OxyData,noCheck,noCheck)
+	#boxplotCa(Ocl,Oba,'Dissolved oxygen','gmtplots/boxplots/oxygenBoxplot.ps','ps',res)
 	
 	
-	'''
-	Next look at summer values at each hemisphere
-	'''
+	#'''
+	#Next look at summer values at each hemisphere
+	#'''
 
-	#for season in seasons:
+	for season in seasons:
 
-	#	'''
-	#	Read only the summer hemisphere
-	#	'''
+		'''
+		Read only the summer hemisphere
+		'''
 
-	#	if season == 'Winter':
-	#		latCheck = lambda x,y: not nonNegativity(y)
-	#		bioFile = 'gmtplots/netcdffiles/productivityWinterKrigingMasked.nc'
-	#	if season == 'Summer':
-	#		latCheck = lambda x,y:nonNegativity(y)
-	#		bioFile = 'gmtplots/netcdffiles/productivitySummerKrigingMasked.nc'
-	#	rawDataPred = readNetcdf(predFilename,['lon','lat','z'],10,latCheck,notNan)
+		if season == 'Winter':
+			latCheck = lambda x,y: not nonNegativity(y) and x % 1 == 0 and y % 1 == 0
+	#		bioFile = 'gmtplots/productivity/winterAll.nc'
+	#		clip = 800
+		if season == 'Summer':
+			latCheck = lambda x,y:nonNegativity(y) and x % 1 == 0 and y % 1 == 0
+	#		bioFile = 'gmtplots/productivity/summerAll.nc'
+	#		clip = 1500
+		if season == 'Annual':
+			latCheck = lambda x,y: x % 1 == 0 and y % 1 == 0
+		rawDataPred = readNetcdf(predFilename,['lon','lat','z'],10,latCheck,notNan)
 
 		
 	#	'''
-	#	Productivity boxplot done
+	#	Productivity boxplot
 	#	'''		
 		
-	#	bioData = readNetcdf(bioFile,['lon','lat','z'],1,latCheck,nonNegativity)
+	#	bioData = readNetcdf(bioFile,['lon','lat','z'],1,noCheck,lambda z: z<clip)
 	#	biocl,bioba = plotElem(rawDataPred,bioData,noCheck,noCheck)
 	#	boxplotCa(biocl,bioba,'Productivity '+season+' [mgC/m**2/day]','gmtplots/boxplots/prodBoxplot'+season+'.ps','ps',res)
-		
+	
+		'''
+		Nutrients boxplot
+		'''
+
+		for element in elements:
+			filename = 'Nutrients/%s%s/%s%san1.001' % (element,season,elemLabel[element],seasonLabel[season])
+			ncFile = filename + '.nc'
+			rawData = readNetcdf(ncFile,['lon','lat','z'],1,noCheck,nonNegativity)
+			Acl,Aba = plotElem(rawDataPred,rawData,noCheck,noCheck)
+			boxplotCa(Acl,Aba,element + ' ['+r'$\mu$'+'mol/l]','gmtplots/boxplots/%s%s.ps' % (element,season),'ps',res)
+
+elements 	= ['nitrate','silicate','phosphate']
+elemLabel	= {'nitrate' : 'n' , 'silicate' : 'i' , 'phosphate' : 'p'}
+seasons 	= ['Annual']
+seasonLabel	= {'Winter' : '13', 'Summer' : '15' , 'Annual' : '00'}
+
+files = ['seabed_lithology_ant.nc','seabed_lithology_nind.nc', 'seabed_lithology_satl.nc', 'seabed_lithology_sind.nc', 'seabed_lithology_spac.nc']#'seabed_lithology_arctic.nc', 
+jointFiles = ['seabed_lithology_catl.nc', 'seabed_lithology_cpac.nc', 'seabed_lithology_natl.nc', 'seabed_lithology_npac.nc']	
+
+def oceanPlots():
+
+	files = ['seabed_lithology_ant.nc', 'seabed_lithology_arctic.nc', 'seabed_lithology_nind.nc', 'seabed_lithology_satl.nc', 'seabed_lithology_sind.nc', 'seabed_lithology_spac.nc']
+ 	jointFiles = ['seabed_lithology_catl.nc', 'seabed_lithology_cpac.nc', 'seabed_lithology_natl.nc', 'seabed_lithology_npac.nc']
+	bathData = readNetcdf('gmtplots/netcdffiles/bathymetryMasked.nc',['lon','lat','z'],1,noCheck,lambda bz : bz < 0)
+
+	for f in files:
+		rawData = readNetcdf('regions/%s' % (f),['lon','lat','z'],1,lambda x,y:x%1==0 and y%1==0,lambda z: notNan(z) and z in [4.,5.,6.,9.,13.])
+		rcl,rba = plotElem(rawData,bathData,noCheck,noCheck)
+		boxplotCa(rcl,rba,'Bathymetry %s [m]' % (f[-7:-3]),'gmtplots/bathymetry%s.ps' % (f[-7:-3]),'ps',600)
+
+	rawData = readNetcdf('regions/seabed_lithology_catl.nc',['lon','lat','z'],1,lambda x,y:x%1==0 and y%1==0,lambda z: notNan(z) and z in [4.,5.,6.,9.,13.])
+	rawData2= readNetcdf('regions/seabed_lithology_natl.nc',['lon','lat','z'],1,lambda x,y:x%1==0 and y%1==0,lambda z: notNan(z) and z in [4.,5.,6.,9.,13.])
+	rawData['classif'].extend(rawData2['classif'])
+	rawData['lon'].extend(rawData2['lon'])
+	rawData['lat'].extend(rawData2['lat'])
+
+	rcl,rba = plotElem(rawData,bathData,noCheck,noCheck)
+	boxplotCa(rcl,rba,'Bathymetry %s [m]' % ('natl and catl'),'gmtplots/bathymetry%s.ps' % ('natlandcatl') ,'ps',600)
+
+	rawData = readNetcdf('regions/seabed_lithology_cpac.nc',['lon','lat','z'],1,lambda x,y:x%1==0 and y%1==0,lambda z: notNan(z) and z in [4.,5.,6.,9.,13.])
+	rawData2= readNetcdf('regions/seabed_lithology_npac.nc',['lon','lat','z'],1,lambda x,y:x%1==0 and y%1==0,lambda z: notNan(z) and z in [4.,5.,6.,9.,13.])
+	rawData['classif'].extend(rawData2['classif'])
+	rawData['lon'].extend(rawData2['lon'])
+	rawData['lat'].extend(rawData2['lat'])
+
+	rcl,rba = plotElem(rawData,bathData,noCheck,noCheck)
+	boxplotCa(rcl,rba,'Bathymetry %s [m]' % ('npac and cpac'),'gmtplots/bathymetry%s.ps' % ('npacandcpac') ,'ps',600)
+
+
+def histOceans(binNr,cl,colrs,plotname,res):
+
+	bathData = readNetcdf('gmtplots/netcdffiles/bathymetryMasked.nc',['lon','lat','z'],1,noCheck,lambda bz : bz < 0)
+	for f in files:
+		rawData = readNetcdf('regions/%s' % (f),['lon','lat','z'],1,lambda x,y:x%1==0 and y%1==0,lambda z: notNan(z) and z == cl)
+		rcl,rba = plotElem(rawData,bathData,noCheck,noCheck)
+		histograms(rba,binNr,colrs,'Bathymetry %s [m]' % (f[-7:-3]),'bathymetry%s%sbins' % (f[-7:-3],binNr),res)
+
+	rawData = readNetcdf('regions/seabed_lithology_catl.nc',['lon','lat','z'],1,lambda x,y:x%1==0 and y%1==0,lambda z: notNan(z) and z == cl)
+	rawData2= readNetcdf('regions/seabed_lithology_natl.nc',['lon','lat','z'],1,lambda x,y:x%1==0 and y%1==0,lambda z: notNan(z) and z == cl)
+	rawData['classif'].extend(rawData2['classif'])
+	rawData['lon'].extend(rawData2['lon'])
+	rawData['lat'].extend(rawData2['lat'])
+
+	rcl,rba = plotElem(rawData,bathData,noCheck,noCheck)
+	histograms(rba,binNr,colrs,'Bathymetry %s [m]' % ('natl and catl'),'bathymetryNatlCatl%sbins'%(binNr),res)
+
+	rawData = readNetcdf('regions/seabed_lithology_cpac.nc',['lon','lat','z'],1,lambda x,y:x%1==0 and y%1==0,lambda z: notNan(z) and z == cl)
+	rawData2= readNetcdf('regions/seabed_lithology_npac.nc',['lon','lat','z'],1,lambda x,y:x%1==0 and y%1==0,lambda z: notNan(z) and z == cl)
+	rawData['classif'].extend(rawData2['classif'])
+	rawData['lon'].extend(rawData2['lon'])
+	rawData['lat'].extend(rawData2['lat'])
+
+	rcl,rba = plotElem(rawData,bathData,noCheck,noCheck)
+	histograms(rba,binNr,colrs,'Bathymetry %s [m]' % ('npac and cpac'),'bathymetryNpacCpac%sbins'%(binNr),res) 
+
+
+
+def histData(filename,cl):
+	return readNetcdf(filename,['lon','lat','z'],1,lambda x,y:x%1==0 and y%1==0,lambda z:notNan(z) and z == cl)
+
+def histograms(data,binNr,colrs,ylab,plotname,res):
+
+	plt.hist(data,bins=binNr,color=colrs)
+	plt.ylabel(ylab)
+	plt.tick_params(axis='both',direction='outward',labeltop='off',labelright='off',color = colrs)
+	plt.savefig(plotname+'.ps',format = 'ps',dpi = res)
+	plt.savefig(plotname+'.png',format = 'png',dpi = res)
+	plt.close()
+
+
+
+
 
 
 
@@ -321,15 +414,6 @@ Helper functions
 def filterFun(xi,x):
 	if abs(xi - x) < 1e-5: return True
 	else: return False
-
-def flooring(data):
-
-	data['lon'] = floorEach(data['lon'])
-	data['lat'] = floorEach(data['lat'])
-	return data
-
-def floorEach(dataList):
-	return [i-.5 for i in dataList]
 
 def isOcean(x,y):
 	return not Basemap.is_land(m,m(x,y)[0],m(x,y)[1])
@@ -385,11 +469,27 @@ opna allar excel skrar
 finna hvar whiskers eru 2.5*q1 - 1.5*q3 og 2.5*q3 - 1.5*q1
 '''
 
-def cptRanges(*files):
+def cptRanges():
+
+	h = 'gmtplots/'
+	files = {h+'boxplots/Shared/bathBoxplot.xlsx':h+'netcdffiles/bathymetryMasked.nc',h+'boxplots/Shared/oxygenBoxplots.xlsx':h+'netcdffiles/oxygen.nc',h+'boxplots/prodBoxplotWinter.xlsx':h+'productivity/winterAll.nc',h+'boxplots/prodBoxplotSummer.xlsx':h+'productivity/summerAll.nc',h+'boxplots/Shared/salinBoxplot.xlsx':h+'netcdffiles/salinity.nc',h+'boxplots/Shared/Tboxplot.xlsx':h+'netcdffiles/temperature.nc'}
 
 	for File in files:
 
 		f = pd.io.excel.read_excel(File)
+		fmin,fmax = min(2.5 * f.irow(1) - 1.5 * f.irow(3)),max(2.5 * f.irow(3) - 1.5 * f.irow(1))
+		print fmin,fmax
+		fmin = max(fmin,min(f.irow(0)))
+		fmax = min(fmax,max(f.irow(4)))
+		print fmin,fmax
+		if File in [h+'boxplots/Shared/oxygenBoxplots.xlsx',h+'boxplots/prodBoxplotWinter.xlsx',h+'boxplots/prodBoxplotSummer.xlsx',h+'boxplots/Shared/salinBoxplot.xlsx']:
+			if fmin < 0:
+				fmin = 0
+		os.system('gmt grd2cpt %s -L%f/%f -D > %s.cpt' % (files[File],fmin,fmax,files[File][:-3]))	
+
+
+
+
 
 def maskMaps():
 
@@ -411,6 +511,32 @@ def maskMaps():
 			os.system('gmt grdmath test.nc gmtplots/productivity/'+season+'mask.nc OR = '+filename+'Masked.nc ')
 
 
+
+def fullNutrMaps():
+
+
+	for element in elements:
+		for season in seasons:
+			filename = 'Nutrients/%s%s/%s%san1.001' % (element,season,elemLabel[element],seasonLabel[season])
+			cleanFile= filename + 'clean'
+			ncFile = filename + '.nc'
+			clean(filename,cleanFile)
+			prearea = '-179.5/179.5/-89.5/89.5'
+			#mismunandi kort fyrir mismunandi season, -R og mask
+			if season == 'Summer':
+				area = '-180/180/0/89'
+				mask = 'summermask.nc'
+			if season == 'Winter':
+				area = '-180/180/-89/0'
+				mask = 'wintermask.nc'
+			if season == 'Annual':
+				area = '-180/180/-89/89'
+				mask = 'seabed_lithology_finegrid_weighted_ocean_v61deg.nc'
+
+			#laga area og allt thetta
+			os.system('gmt xyz2grd %s -G%s -I1 -R%s -fg -:' % (cleanFile,ncFile,prearea))
+			os.system('gmt grdsample %s -G%s -I1 -R%s -fg' % (ncFile,ncFile,area))
+			os.system('gmt grdmath %s %s OR = %s' % (ncFile,mask,ncFile))
 
 def fullProdMaps():
 
