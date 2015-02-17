@@ -13,6 +13,7 @@ from pandas import DataFrame
 import pandas as pd
 from netCDF4 import Dataset
 import os
+import copy
 
 '''
 Global constants
@@ -431,35 +432,6 @@ def zRange(z):
 	return zmin < z < zmax
 
 
-from sklearn.gaussian_process import GaussianProcess
-
-def runKriging(filename,outFilename):
-
-	rawData = readNetcdf(filename,['lon','lat','z'],1,noCheck,notNan)
-	xpoints = np.arange(-180,180)
-	ypoints = np.arange(-89,89)
-	mapped = kriging(rawData,xpoints,ypoints)
-	g = open(outFilename,'w')
-	for i,xi in enumerate(xpoints):
-		for j,yj in enumerate(ypoints):
-			g.write(str(xi) + ' '+str(yi) + ' ' + str(mapped[i,j]))
-	g.close()
-
-def kriging(rawData,xpoints,ypoints):
-	gp = GaussianProcess(theta0=0.1, thetaL=.001, thetaU=1., nugget=0.01)
-	data = [(rawData['lon'][i] , rawData['lat'][i]) for i in range(len(rawData['lon']))]
-	labels = rawData['classif']
-	print 'Fitting data to classifier'
-	gp.fit(data,labels)
-	print 'Finished fitting data'
-	mapped = []
-	for i,xi in enumerate(xpoints):
-		yi = []
-		for yj in ypoints:
-			yi.append(gp.predict([xi,yj]))
-		mapped.append(yi)
-		print float(i)/len(xpoints)
-	return mapped
 
 
 '''
@@ -568,24 +540,116 @@ def fullProdMaps():
 			os.system('gmt grdmath '+headers(summer,'summer')+'ADD 0.33333 MUL = gmtplots/productivity/summer'+year+'.nc')
 
 
+def mapXY(x,y):
+	return int(-89./180.*x + y)
+
+def multivarAnalysis():
+
+	x = np.arange(-180,181)
+	y = np.arange(-89,90)
+	xvec = [xi for xi in x for yi in y]
+	yvec = [yi for xi in x for yi in y]
+	sali = [np.nan for i in xvec]
+	temp = copy.copy(sali)
+	sili = copy.copy(sali)
+	nitr = copy.copy(sali)
+	phos = copy.copy(sali)
+	bath = copy.copy(sali)
+	prod = copy.copy(sali)
+	sali = fillList(sali,readNetcdf('gmtplots/netcdffiles/salinity.nc',['lon','lat','z'],1,noCheck,notNan))
+	temp = fillList(temp,readNetcdf('gmtplots/netcdffiles/temperature.nc',['lon','lat','z'],1,noCheck,notNan))
+	sili = fillList(sili,readNetcdf('gmtplots/netcdffiles/silicateAnnual.nc',['lon','lat','z'],1,noCheck,notNan))
+	nitr = fillList(nitr,readNetcdf('gmtplots/netcdffiles/nitrateAnnual.nc',['lon','lat','z'],1,noCheck,notNan))
+	phos = fillList(phos,readNetcdf('gmtplots/netcdffiles/phosphateAnnual.nc',['lon','lat','z'],1,noCheck,notNan))
+	bath = fillList(bath,readNetcdf('gmtplots/netcdffiles/bathymetryMasked.nc',['lon','lat','z'],1,noCheck,notNan))
+	prodSummer = readNetcdf('gmtplots/netcdffiles/summerAll.nc',['lon','lat','z'],1,noCheck,notNan)
+	prodWinter = readNetcdf('gmtplots/netcdffiles/winterAll.nc',['lon','lat','z'],1,noCheck,notNan)
+	prodSummer['classif'].extend(prodWinter['classif'])
+	prodSummer['lon'].extend(prodWinter['lon'])
+	prodSummer['lat'].extend(prodWinter['lat'])
+	prod = fillList(prod,prodSummer)
+
+	stats = DataFrame([[i+1,xvec[i],yvec[i],sali[i],temp[i],sili[i],nitr[i],phos[i],bath[i],prod[i]] for i in range(len(xvec))], index = None , columns = None)
+	stats.to_csv('lithologyStats.m',sep = '\t', index = None , columns = None)
+
+def fillList(li,rawData):
+
+	for i,j in enumerate(rawData['classif']):
+
+		xi = rawData['lon'][i]
+		yi = rawData['lat'][i]
+		ind = mapXY(xi,yi)
+		li[ind] = j
+
+	return li
+
+def contourCa(nx,ny,nz,cont):
+
+	'''
+	Return a list with all points that the requested contour lies only
+	'''
+
+	cs = plt.contour(nx,ny,nz,[cont])
+	x,y = [],[]
+	for path in range(len(cs.collections[0].get_paths())):
+		p = cs.collections[0].get_paths()[path]
+		v = p.vertices
+		x.extend(v[:,0])
+		y.extend(v[:,1])
+	return x,y
+
+def readCa(filename):
+	ncData = Dataset(filename,'r')
+	nx = ncData.variables['lon'][:]
+	ny = ncData.variables['lat'][:]
+	nz = np.ma.getdata(ncData.variables['z'][:][:,:])
+	return nx, ny, nz
 
 
 
 
 
+def ocean(x,y):
+
+	if -100 <= x <= 20 and 20 <= y <= 65:
+		return 'natl'
+	if -80 <= x <= 20 and 0 <= y <= 20:
+		return 'catl'
+	if -70 <= x <= 20 and -40 <= y <= 0:
+		return 'satl'
+	if 20 <= x <= 120 and 0 <= y <= 24.5:
+		return 'nind'
+	if 20 <= x <= 120 and -40 <= y <= 0:
+		return 'sind'
+	if 120 <= x <= 260 and 20 <= y <= 59.5:
+		return 'npac'
+	if 120 <= x <= 280 and 0 <= y <= 20:
+		return 'cpac'
+	if 120 <= x <= 290 and -40 <= x <= 0:
+		return 'spac'
+	if y > 65:
+		return 'arctic'
+	if y < -40:
+		return 'antarctic'
+	return 'none'
 
 
+def histCaOceans():
 
+	oceans = ['natl','satl','nind','sind','npac','spac','antarctic']
+	conData = readNetcdf('test.nc',['lon','lat','z'],1,noCheck,notNan)
 
-
-
-
-
-
-
-
-
-
+	for o in oceans:
+		if o == 'natl':
+			oceanCheck = lambda x,y: ocean(x,y) == o or ocean(x,y) == 'catl'
+		if o == 'npac':
+			oceanCheck = lambda x,y: ocean(x,y) == o or ocean(x,y) == 'cpac'
+		else:
+			oceanCheck = lambda x,y: ocean(x,y) == o
+		bathData = readNetcdf('gmtplots/netcdffiles/bathymetryMasked.nc',['lon','lat','z'],1,oceanCheck,notNan)
+		ccl,cba = plotElem(conData,bathData,noCheck,noCheck)
+		if cba:
+			histograms(cba,20,colors[4],'Bathymetry at CaCO3 20 %s' % (o),'caco3bath%s' % (o) ,600)
 
 
 
