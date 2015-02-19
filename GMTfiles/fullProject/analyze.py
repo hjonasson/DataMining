@@ -541,7 +541,7 @@ def fullProdMaps():
 
 
 def mapXY(x,y):
-	return int(-89./180.*x + y)
+	return int(179*(x + 180) + y + 89)
 
 def multivarAnalysis():
 
@@ -568,8 +568,8 @@ def multivarAnalysis():
 	prodSummer['lon'].extend(prodWinter['lon'])
 	prodSummer['lat'].extend(prodWinter['lat'])
 	prod = fillList(prod,prodSummer)
-
-	stats = DataFrame([[i+1,xvec[i],yvec[i],sali[i],temp[i],sili[i],nitr[i],phos[i],bath[i],prod[i]] for i in range(len(xvec))], index = None , columns = None)
+	#ekki prenta ef ekkert i listanum
+	stats = DataFrame([[i+1,xvec[i],yvec[i],sali[i],temp[i],sili[i],nitr[i],phos[i],bath[i],prod[i]] for i in range(len(xvec)) if not np.isnan([i+1,xvec[i],yvec[i],sali[i],temp[i],sili[i],nitr[i],phos[i],bath[i],prod[i]]).any()], index = None , columns = None)
 	stats.to_csv('lithologyStats.m',sep = '\t', index = None , columns = None)
 
 def fillList(li,rawData):
@@ -583,27 +583,6 @@ def fillList(li,rawData):
 
 	return li
 
-def contourCa(nx,ny,nz,cont):
-
-	'''
-	Return a list with all points that the requested contour lies only
-	'''
-
-	cs = plt.contour(nx,ny,nz,[cont])
-	x,y = [],[]
-	for path in range(len(cs.collections[0].get_paths())):
-		p = cs.collections[0].get_paths()[path]
-		v = p.vertices
-		x.extend(v[:,0])
-		y.extend(v[:,1])
-	return x,y
-
-def readCa(filename):
-	ncData = Dataset(filename,'r')
-	nx = ncData.variables['lon'][:]
-	ny = ncData.variables['lat'][:]
-	nz = np.ma.getdata(ncData.variables['z'][:][:,:])
-	return nx, ny, nz
 
 
 
@@ -625,7 +604,7 @@ def ocean(x,y):
 		return 'npac'
 	if 120 <= x <= 280 and 0 <= y <= 20:
 		return 'cpac'
-	if 120 <= x <= 290 and -40 <= x <= 0:
+	if 120 <= x <= 290 and -40 <= y <= 0:
 		return 'spac'
 	if y > 65:
 		return 'arctic'
@@ -634,10 +613,10 @@ def ocean(x,y):
 	return 'none'
 
 
-def histCaOceans():
+def histCaOceans(caco3,binNr):
 
 	oceans = ['natl','satl','nind','sind','npac','spac','antarctic']
-	conData = readNetcdf('test.nc',['lon','lat','z'],1,noCheck,notNan)
+	conData = readNetcdf('test%s.nc' % (caco3),['lon','lat','z'],1,noCheck,notNan)
 
 	for o in oceans:
 		if o == 'natl':
@@ -649,23 +628,131 @@ def histCaOceans():
 		bathData = readNetcdf('gmtplots/netcdffiles/bathymetryMasked.nc',['lon','lat','z'],1,oceanCheck,notNan)
 		ccl,cba = plotElem(conData,bathData,noCheck,noCheck)
 		if cba:
-			histograms(cba,20,colors[4],'Bathymetry at CaCO3 20 %s' % (o),'caco3bath%s' % (o) ,600)
+			histograms(cba,binNr,colors[4],'Bathymetry at CaCO3 %s %s' % (caco3,o),'caco3bath%s%sbins%sperc' % (o,binNr,caco3) ,600)
+
+from sklearn.decomposition import RandomizedPCA
+def PCACa():
+
+	caco3 = Dataset('gmtplots/netcdffiles/CaCO3_Archer.nc','r')
+	cax = caco3.variables['lon'][:]
+	cay = caco3.variables['lat'][:]
+	caz = np.ma.getdata(caco3.variables['z'][:][1:-1,:]).flatten()
+
+	bathData = Dataset('gmtplots/netcdffiles/bathymetryMasked.nc','r')
+	nx = bathData.variables['lon'][:]
+	ny = bathData.variables['lat'][:]
+	nz = bathData.variables['z'][:,:].flatten()
+
+	X = np.array([[nz[ i ], j] for i,j in enumerate(caz) if not np.isnan([nz[ i ], j]).any()])
+	pca = RandomizedPCA(n_components=2)
+	pca.fit(X) 
+	print(pca.explained_variance_ratio_) 
+
+	return pca
+
+def dotgramsCaOceans(caco3,binNr):
+
+	oceans = {'natl':[0,0],'satl':[0,1],'nind':[1,0],'sind':[1,1],'npac':[2,0],'spac':[2,1],'arctic':[3,0],'antarctic':[3,1]}
+	conData = readNetcdf('caco3%s.nc' % (caco3),['lon','lat','z'],1,noCheck,notNan)
+	
+	f,axarr = plt.subplots(4,2)
+
+	for o,v in oceans.iteritems():
+		if o == 'natl':
+			oceanCheck = lambda x,y: ocean(x,y) == o or ocean(x,y) == 'catl'
+		if o == 'npac':
+			oceanCheck = lambda x,y: ocean(x,y) == o or ocean(x,y) == 'cpac'
+		else:
+			oceanCheck = lambda x,y: ocean(x,y) == o
+		bathData = readNetcdf('gmtplots/netcdffiles/bathymetryMasked.nc',['lon','lat','z'],1,oceanCheck,lambda z:notNan(z) and not nonNegativity(z))
+		ccl,cba = plotElem(conData,bathData,noCheck,noCheck)
+		if not cba:
+			cba = [-1,-1,-1]
+		axarr[v[0]][v[1]].hist(cba,bins=binNr,color = colors[4])
+		axarr[v[0]][v[1]].set_title(o)
+
+	plt.savefig('CCD%s%sbins.png' % (caco3,binNr),format = 'png',dpi = 600)
+	plt.show()
+	plt.close()
+
+def histCaAllOceans():
+
+	oceans = {'natl':[0,0],'satl':[0,1],'nind':[1,0],'sind':[1,1],'npac':[2,0],'spac':[2,1],'arctic':[3,0],'antarctic':[3,1]}
+	
+	f,axarr = plt.subplots(4,2)
 
 
+	for o,v in oceans.iteritems():
+		cbaVec = []
+		for caco3 in [20,30,40,50,60]:	
+			conData = readNetcdf('test%s.nc' % (caco3),['lon','lat','z'],1,noCheck,notNan)
+			if o == 'natl':
+				oceanCheck = lambda x,y: ocean(x,y) == o or ocean(x,y) == 'catl'
+			if o == 'npac':
+				oceanCheck = lambda x,y: ocean(x,y) == o or ocean(x,y) == 'cpac'
+			else:
+				oceanCheck = lambda x,y: ocean(x,y) == o
+			bathData = readNetcdf('gmtplots/netcdffiles/bathymetryMasked.nc',['lon','lat','z'],1,oceanCheck,lambda z:notNan(z) and not nonNegativity(z))
+			ccl,cba = plotElem(conData,bathData,noCheck,noCheck)
+			
+			if not cba:
+				cba = [0,0,0]
+			cbaVec.append(cba)
+		boxes = axarr[v[0]][v[1]].boxplot(cbaVec,0,'ko',0.4,patch_artist = True)
+		for box in range(len(boxes['boxes'])):
+			boxes['boxes'][box].set(color = colors[4],alpha = 0.4)
+			boxes['boxes'][box].set(facecolor = colors[4],alpha = 0.4)
+	
+		for whisker in boxes['whiskers']:
+			whisker.set(color = 'black' ,alpha = 0.4)
+
+		#for cap in boxes['caps']:
+		#	cap.set(color = 'black',alpha = 0.4)
+
+		for median in boxes['medians']:
+			median.set(color = 'black', alpha = 0.4)
+
+		for flier in boxes['fliers']:
+			flier.set(marker = '.',color = 'black',alpha = 0.4)
+		axarr[v[0]][v[1]].set_title(o)
+		axarr[v[0]][v[1]].set_xticklabels(['20','30','40','50','60'])
+	plt.savefig('oceanBoxplots.png',format = 'png',dpi = 600)
+	plt.show()
+	plt.close()
 
 
+'''
+	fig = plt.figure(1,figsize = (6,4))
+	ax = fig.add_subplot(111)
+	boxes = ax.boxplot([i for i in data if i],0,'ko',0.4,patch_artist = True)
+	for box in range(len(boxes['boxes'])):
+		boxes['boxes'][box].set(color = colorsBox[box],alpha = 0.4)
+		boxes['boxes'][box].set(facecolor = colorsBox[box],alpha = 0.4)
+	
+	for whisker in boxes['whiskers']:
+		whisker.set(color = 'black' ,alpha = 0.4)
 
+	#for cap in boxes['caps']:
+	#	cap.set(color = 'black',alpha = 0.4)
 
+	for median in boxes['medians']:
+		median.set(color = 'black', alpha = 0.4)
 
+	for flier in boxes['fliers']:
+		flier.set(marker = '.',color = 'black',alpha = 0.4)
 
+	#ax.set_title('CaCO3 content in different sediments')
+	ax.set_ylabel(ytext)
+	ax.set_xticklabels([str(int(i)) for i in sorted(set(classif))])
+	#Set ticks outwards
+	ax.xaxis.set_ticks_position('bottom')
+	ax.yaxis.set_ticks_position('left')
+	ax.spines['left'].axis.axes.tick_params(direction = 'outward')
 
-
-
-
-
-
-
-
+	plt.savefig(plotname,format = plotformat,dpi = res)
+	plt.savefig(plotname[:-3]+'.png',format = 'png',dpi = res)
+	plt.clf()
+'''
 
 
 

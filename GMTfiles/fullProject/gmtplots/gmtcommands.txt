@@ -1,0 +1,71 @@
+#Commands for adapting productivity plots, kriging
+
+#For summer hemisphere
+#Separate northern hemisphere
+gmt grdsample ../seabed_lithology_finegrid_weighted_ocean_v6.nc -Gtest.nc -R-180/180/0/89 -I1
+
+#Remove landmass
+gmt grdmath netcdffiles/productivitySummerKriging.nc test.nc OR = summerMasked.nc
+
+#Change negative values to 0
+gmt grdmath netcdffiles/productivitySummerKriging.nc summerMasked.nc 0 GT = summerNegatives.nc
+
+#Mask 0 values
+gmt grdmath summerNegatives.nc summerMasked.nc 0 IFELSE = netcdffiles/productivitySummerKrigingMasked.nc
+
+#For winter hemisphere
+#Separate southern hemisphere
+gmt grdsample ../seabed_lithology_finegrid_weighted_ocean_v6.nc -Gtest.nc -R-180/180/-89/0 -I1
+
+#Remove landmass
+gmt grdmath netcdffiles/productivityWinterKriging.nc test.nc OR = winterMasked.nc
+
+#Change negative values to 0
+gmt grdmath netcdffiles/productivityWinterKriging.nc winterMasked.nc 0 GT = winterNegatives.nc
+
+#Mask 0 values
+gmt grdmath winterNegatives.nc winterMasked.nc 0 IFELSE = netcdffiles/productivityWinterKrigingMasked.nc
+
+#Commands for adapting productivity plots, linear interpolation
+
+#For summer hemisphere
+#Separate northern hemisphere
+gmt grdsample ../seabed_lithology_finegrid_weighted_ocean_v6.nc -Gtest.nc -R-180/180/0/89 -I1
+gmt grdsample netcdffiles/productivitySummerLinearInterp.nc -Gpslitest.nc -R-180/180/0/89 -I1
+
+#Remove landmass
+gmt grdmath pslitest.nc test.nc OR = summerMasked.nc
+
+#Change negative values to 0
+gmt grdmath pslitest.nc summerMasked.nc 0 GT = summerNegatives.nc
+
+#Mask 0 values
+gmt grdmath summerNegatives.nc summerMasked.nc 0 IFELSE = netcdffiles/productivitySummerLinearInterpMasked.nc
+
+#For winter hemisphere
+#Separate southern hemisphere
+gmt grdsample ../seabed_lithology_finegrid_weighted_ocean_v6.nc -Gtest.nc -R-180/180/-89/0 -I1
+gmt grdsample netcdffiles/productivityWinterLinearInterp.nc -Gpnlitest.nc -R-180/180/-89/0 -I1
+
+#Remove landmass
+gmt grdmath pnlitest.nc test.nc OR = winterMasked.nc
+
+#Change negative values to 0
+gmt grdmath pnlitest.nc winterMasked.nc 0 GT = winterNegatives.nc
+
+#Mask 0 values
+gmt grdmath winterNegatives.nc winterMasked.nc 0 IFELSE = netcdffiles/productivityWinterLinearInterpMasked.nc
+
+
+
+rm winterMasked.nc
+rm summerMasked.nc
+rm winterNegatives.nc
+rm summerNegatives.nc
+rm test.nc
+rm pnlitest.nc
+rm pslitest.nc
+
+#Commands related to mapmaking
+# make colorscale
+#gmt psscale -D10.5i/2i/7.5c/0.75c -C$color -O -K >> $psfile
