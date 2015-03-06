@@ -42,51 +42,26 @@ def clean(filename,newFile):
 				g.write(splitLine[0] + ' ' + splitLine[1] + ' NaN\n')
 	g.close()
 
-def readTxt(filename,xyCheck , zCheck = lambda zi: zi != 'NaN'):
+def readTxt(filename,xyCheck,zCheck,comment,nans):
 
-	'''
-	Takes in a filename of a three column format and gives
-	the data from it in a dictionary
-
-	to get 1x1 degree grid: xyCheck = lambda x,y: not x % 1 and not y % 1
-	'''
-
-	data = {'lon':[],'lat':[],'classif':[]}
-	f = open(filename)
-	lines = f.readlines()
-	for line in lines:
-		if line[0] != '>' and line[1] != 'L':
-			splitLine = re.split(r'\t+',line.strip())[0].split()
-			if xyCheck(float(splitLine[1]),float(splitLine[0])) and zCheck(float(splitLine[2])):
-				data['lon'].append(float(splitLine[1]))
-				data['lat'].append(float(splitLine[0]))
-				data['classif'].append(float(splitLine[2]))
+	d = {}
+	d['lon'],d['lat'],d['classif'] = np.loadtxt(filename,comments = comment).T
+	data = filterLi(d['lon'],d['lat'],d['classif'],xyCheck,zCheck)
 	return data
 
-def readNetcdf2(ncFile,keyList,ptsPerDeg,xyCheck,zCheck):
+def filterLi(x,y,z,xyCheck,zCheck):
 
-	'''
-	Reads in a netcdf file that has ptsPerDeg points per degree, 0.1x0.1 degree grid has ptsPerDeg=10
-	'''
-
-	ncData = Dataset(ncFile,'r')
-	nx = ncData.variables['lon'][::ptsPerDeg]
-	ny = ncData.variables['lat'][::ptsPerDeg]
-	nz = ncData.variables['z'][::ptsPerDeg,::ptsPerDeg]
-
+	data = {}
 	data = {'lon':[],'lat':[],'classif':[]}
-	for i in range(len(nx)):
-		for j in range(len(ny)):
-			xi = nx[i]
-			yj = ny[j]
-			zij= nz[j,i]
-			if xyCheck(xi,yj) and zCheck(zij):	
-				data['lon'].append(xi)
-				data['lat'].append(yj)
-				data['classif'].append(zij)
+	for xi,yi,zi in zip(x,y,z):
+		if xyCheck(xi,yi) and zCheck(zi):
+			data['lon'].append(xi)
+			data['lat'].append(yi)
+			data['classif'].append(zi)
+
 	return data
 
-def readNetcdf(ncFile,keyList,ptsPerDeg,xyCheck,zCheck):
+def readNetcdf(ncFile,ptsPerDeg,xyCheck,zCheck):
 
 	'''
 	Reads in a netcdf file that has ptsPerDeg points per degree, 0.1x0.1 degree grid has ptsPerDeg=10
@@ -97,31 +72,101 @@ def readNetcdf(ncFile,keyList,ptsPerDeg,xyCheck,zCheck):
 	ny = ncData.variables['lat'][:]
 	nz = ncData.variables['z'][:][:,:]
 
+	return loopReadFile(nx,ny,nz,xyCheck,zCheck)
+
+def loopReadFile(nx,ny,nz,xyCheck,zCheck):
+
 	data = {'lon':[],'lat':[],'classif':[]}
-	for i in range(len(nx)):
-		for j in range(len(ny)):
-			xi = nx[i]
-			yj = ny[j]
-			zij= nz[j,i]
-			if xyCheck(xi,yj) and zCheck(zij):	
-				data['lon'].append(xi)
-				data['lat'].append(yj)
-				data['classif'].append(zij)
+
+	for i,j in itertools.product(enumerate(nx),enumerate(ny)):
+		xi = rollOff2pi(i[1])
+		yj = j[1]
+		zij= nz[j[0],i[0]]
+		if xyCheck(xi,yj) and zCheck(zij):	
+			data['lon'].append(xi)
+			data['lat'].append(yj)
+			data['classif'].append(zij)
 	return data
+
+
+def rollOff2pi(xi):
+
+	while not -180 < xi < 180:
+		xi = xi - np.sign(xi) * 360
+	return xi
+
 
 '''
 Boxplot functions
 '''
 
 
+def mapXY(x,y,x0,y0,yn):
+	return (yn - y0 + 1) * (x - x0) + y - y0
+
+def emptyVec(vectorLen):
+
+	vec1 = np.empty((vectorLen,1))
+	vec2 = np.empty((vectorLen,1))
+	vec1[:] = np.NaN
+	vec2[:] = np.NaN
+
+	return flatten(vec1),flatten(vec2)
+
+def flatten(l):
+	return [i for sublist in l for i in sublist]
+
+def oceanCheck(x,y,o):
+
+
+	if o == 'natl':
+		return ocean(x,y) == o or ocean(x,y) == 'catl'
+	if o == 'npac':
+		return ocean(x,y) == o or ocean(x,y) == 'cpac'
+	else:
+		return ocean(x,y) == o
+
+def fillList(li,rawData,x0,y0,yn):
+
+	for i,j in enumerate(rawData['classif']):
+
+		xi = rawData['lon'][i]
+		yi = rawData['lat'][i]
+		ind = mapXY(xi,yi,x0,y0,yn)
+		li[ind] = j
+
+	return li
+
+def cleanNans(vec1,vec2):
+
+		ve1,ve2 = [],[]
+
+		for i,j in zip(vec1,vec2):
+			if not np.isnan([i,j]).any():
+				ve1.append(i)
+				ve2.append(j)
+		return ve1,ve2
+
+oceans = {'natl':[0,0],'satl':[0,1],'nind':[1,0],'sind':[1,1],'npac':[2,0],'spac':[2,1],'arctic':[3,0],'antarctic':[3,1]}
+
+def histCaPred(file1,file2,region,zCheck1,zCheck2):
+
+	x0,xn,y0,yn = region
+	vectorLen = (xn - x0 + 1) * (yn - y0 + 1)
+	for o,v in oceans.iteritems():
+
+		vec1,vec2 = emptyVec(vectorLen)
+		data1 = readNetcdf(file1,1,lambda x,y:oceanCheck(x,y,o),zCheck1)
+		data2 = readNetcdf(file2,1,lambda x,y:oceanCheck(x,y,o),zCheck2)
+		vec1 = fillList(vec1,data1,x0,y0,yn)
+		vec2 = fillList(vec2,data2,x0,y0,yn)
+		vec1,vec2 = cleanNans(vec1,vec2)
+		boxplotCa(vec1,vec2,'CaCO3 %s' % (o),'CaCO3%s.ps' % (o),'ps',600)
+
 
 def boxplotCa(classif,caco3,ytext,plotname,plotformat,res):
 
-	data = [[] for i in range(len(classifications))]
-	for i in range(len(caco3)):
-		cl = int(classif[i]) - 1
-		data[cl].append(caco3[i])
-	print len(data),[len(data[i]) for i in range(len(data))]
+	data = sortClassif(classif,caco3)
 	
 	# Write quartiles to csv
 	colorsBox = [colors[int(i) - 1] for i in sorted(set(classif))]
@@ -162,167 +207,17 @@ def boxplotCa(classif,caco3,ytext,plotname,plotformat,res):
 	plt.savefig(plotname[:-3]+'.png',format = 'png',dpi = res)
 	plt.clf()
 
-'''
-Functions that compare two z values
-'''
-
-def plotNetcdf(rawDataPred,ncFile,ptsPerDeg,keyList,xyCheck,zCheck):
-
-	'''
-	rawDataPred is the rawData read from text file
-	ncFile is the name of the netcdf file you want
-	ptsPerDeg is 10 for 0.1deg grid
-	keyList is a list of the keys in the netcdf file in ['x','y','z'] order
-
-	for bathymetry run plotNetcdf(rawDataPred,'ETOPO1_Bed_g_gmt4.grd',60,['x','y','z'],isOcean,lambda bz: bz < 0)
-
-	returns the z values parewise [[zi1,zj1],...]
-	'''
-	print keyList[0]
-	ncData = Dataset(ncFile,'r')
-	nx = ncData.variables[keyList[0]][::ptsPerDeg]
-	ny = ncData.variables[keyList[1]][::ptsPerDeg]
-	nz = ncData.variables[keyList[2]][:][::ptsPerDeg,::ptsPerDeg]
-
-	data = []
-	zlen = len(rawDataPred['classif'])
-	nxlen = len(nx)
-	nylen = len(ny)
-
-	for i in range(zlen):
-		xd = rawDataPred['lon'][i]
-		yd = rawDataPred['lat'][i]
-		if xyCheck(xd,yd):
-			for yi in itertools.ifilter( lambda m:filterFun( int(ny[m]) , int(yd) ), range(nylen)):
-				for xi in itertools.ifilter( lambda n:filterFun( int(nx[n]) , int(xd) ), range(nxlen)):
-					zi = nz[yi,xi]
-					if zCheck(zi):
-						zd = rawDataPred['classif'][i]
-						data.append([zd,zi])
-		print float(i)/zlen
-
-	return data
-
 
 
 def plotElem(rawDataPred,rDT,xyCheck ,zCheck ):
 
-	data = []
-	zlen = len(rawDataPred['classif'])
-	for i in range(zlen):
-		xd = rawDataPred['lon'][i]
-		yd = rawDataPred['lat'][i]
-		for j in itertools.ifilter(lambda m: filterFun(rDT['lat'][m],yd) and filterFun(rDT['lon'][m],xd),range(len(rDT['lat']))):
-			zj = rDT['classif'][j]
-			if xyCheck(xd,yd) and zCheck(zj):
-				data.append([rawDataPred['classif'][i],rDT['classif'][j]])
-		print float(i)/zlen
-	return [i[0] for i in data],[i[1] for i in data]
+	d = pd.DataFrame(rawDataPred)
+	d2= pd.DataFrame(rDT)
+	d3= d.merge(d2,left_on = ['lon','lat'],right_on = ['lon','lat'])
+
+	return d3.classif_x , d3.classif_y
 
 
-
-'''
-Looking at nitrate, phosphate and silicate at different depths
-'''
-
-
-
-zmin = 30
-zmax = 40
-
-def allPlots(predFilename,TFile,salFile,oxyFile,res):
-	print 'starting'	
-	'''
-	Global classifications
-	'''
-	rawDataPred = readNetcdf2(predFilename,['lon','lat','z'],10,noCheck,notNan)
-	
-	'''
-	Temperature boxplot 
-	'''
-
-	#rDT = readNetcdf(TFile,['lon','lat','z'],1,noCheck,notNan)
-	#Tcl,Tba = plotElem(rawDataPred,rDT,noCheck,noCheck)
-	#boxplotCa(Tcl,Tba,'Temperature [C]','gmtplots/boxplots/Tboxplot.ps','ps',res)
-	
-	'''
-	Bathymetry boxplot 
-	'''
-
-	#BathData = readNetcdf('gmtplots/netcdffiles/bathymetryMasked.nc',60,['lon','lat','z'],noCheck,lambda bz : bz < 0)
-	#print 'here'
-	#Bcl,Bba = plotElem(rawDataPred,BathData,noCheck,noCheck)
-	#print 'again'
-	#boxplotCa(Bcl,Bba,'Bathymetry [m]','gmtplots/boxplots/bathBoxplot.ps','ps',res)
-	
-	'''
-	Salinity boxplot 
-	'''
-
-	#SalData = readNetcdf(salFile,['lon','lat','z'],1,noCheck,notNan)
-	#Scl,Sba = plotElem(rawDataPred,SalData,noCheck,noCheck)
-	#boxplotCa(Scl,Sba,'Salinity','gmtplots/boxplots/salinBoxplot.ps','ps',res)
-	
-
-	'''
-	Salinity boxplot with a tighter range
-	'''
-
-	#SalData = readNetcdf(salFile,['lon','lat','z'],1,noCheck,lambda z:nonNegativity(z) and zmin < z < zmax)
-	#Scl,Sba = plotElem(rawDataPred,SalData,noCheck,noCheck)
-	#boxplotCa(Scl,Sba,'Salinity','gmtplots/boxplots/salinBoxplot'+str(zmin)+str(zmax)+'.ps','ps',res)
-	
-	
-	'''
-	Dissolved oxygen boxplot
-	'''
-
-	#OxyData = readNetcdf(oxyFile,['lon','lat','z'],1,noCheck,noCheck)
-	#Ocl,Oba = plotElem(rawDataPred,OxyData,noCheck,noCheck)
-	#boxplotCa(Ocl,Oba,'Dissolved oxygen','gmtplots/boxplots/oxygenBoxplot.ps','ps',res)
-	
-	
-	#'''
-	#Next look at summer values at each hemisphere
-	#'''
-
-	for season in seasons:
-
-		'''
-		Read only the summer hemisphere
-		'''
-
-		if season == 'Winter':
-			latCheck = lambda x,y: not nonNegativity(y) and x % 1 == 0 and y % 1 == 0
-	#		bioFile = 'gmtplots/productivity/winterAll.nc'
-	#		clip = 800
-		if season == 'Summer':
-			latCheck = lambda x,y:nonNegativity(y) and x % 1 == 0 and y % 1 == 0
-	#		bioFile = 'gmtplots/productivity/summerAll.nc'
-	#		clip = 1500
-		if season == 'Annual':
-			latCheck = lambda x,y: x % 1 == 0 and y % 1 == 0
-		rawDataPred = readNetcdf(predFilename,['lon','lat','z'],10,latCheck,notNan)
-
-		
-	#	'''
-	#	Productivity boxplot
-	#	'''		
-		
-	#	bioData = readNetcdf(bioFile,['lon','lat','z'],1,noCheck,lambda z: z<clip)
-	#	biocl,bioba = plotElem(rawDataPred,bioData,noCheck,noCheck)
-	#	boxplotCa(biocl,bioba,'Productivity '+season+' [mgC/m**2/day]','gmtplots/boxplots/prodBoxplot'+season+'.ps','ps',res)
-	
-		'''
-		Nutrients boxplot
-		'''
-
-		for element in elements:
-			filename = 'Nutrients/%s%s/%s%san1.001' % (element,season,elemLabel[element],seasonLabel[season])
-			ncFile = filename + '.nc'
-			rawData = readNetcdf(ncFile,['lon','lat','z'],1,noCheck,nonNegativity)
-			Acl,Aba = plotElem(rawDataPred,rawData,noCheck,noCheck)
-			boxplotCa(Acl,Aba,element + ' ['+r'$\mu$'+'mol/l]','gmtplots/boxplots/%s%s.ps' % (element,season),'ps',res)
 
 elements 	= ['nitrate','silicate','phosphate']
 elemLabel	= {'nitrate' : 'n' , 'silicate' : 'i' , 'phosphate' : 'p'}
@@ -336,15 +231,15 @@ def oceanPlots():
 
 	files = ['seabed_lithology_ant.nc', 'seabed_lithology_arctic.nc', 'seabed_lithology_nind.nc', 'seabed_lithology_satl.nc', 'seabed_lithology_sind.nc', 'seabed_lithology_spac.nc']
  	jointFiles = ['seabed_lithology_catl.nc', 'seabed_lithology_cpac.nc', 'seabed_lithology_natl.nc', 'seabed_lithology_npac.nc']
-	bathData = readNetcdf('gmtplots/netcdffiles/bathymetryMasked.nc',['lon','lat','z'],1,noCheck,lambda bz : bz < 0)
+	bathData = readNetcdf('gmtplots/netcdffiles/bathymetryMasked.nc',1,noCheck,lambda bz : bz < 0)
 
 	for f in files:
-		rawData = readNetcdf('regions/%s' % (f),['lon','lat','z'],1,lambda x,y:x%1==0 and y%1==0,lambda z: notNan(z) and z in [4.,5.,6.,9.,13.])
+		rawData = readNetcdf('regions/%s' % (f),1,lambda x,y:x%1==0 and y%1==0,lambda z: notNan(z) and z in [4.,5.,6.,9.,13.])
 		rcl,rba = plotElem(rawData,bathData,noCheck,noCheck)
 		boxplotCa(rcl,rba,'Bathymetry %s [m]' % (f[-7:-3]),'gmtplots/bathymetry%s.ps' % (f[-7:-3]),'ps',600)
 
-	rawData = readNetcdf('regions/seabed_lithology_catl.nc',['lon','lat','z'],1,lambda x,y:x%1==0 and y%1==0,lambda z: notNan(z) and z in [4.,5.,6.,9.,13.])
-	rawData2= readNetcdf('regions/seabed_lithology_natl.nc',['lon','lat','z'],1,lambda x,y:x%1==0 and y%1==0,lambda z: notNan(z) and z in [4.,5.,6.,9.,13.])
+	rawData = readNetcdf('regions/seabed_lithology_catl.nc',1,lambda x,y:x%1==0 and y%1==0,lambda z: notNan(z) and z in [4.,5.,6.,9.,13.])
+	rawData2= readNetcdf('regions/seabed_lithology_natl.nc',1,lambda x,y:x%1==0 and y%1==0,lambda z: notNan(z) and z in [4.,5.,6.,9.,13.])
 	rawData['classif'].extend(rawData2['classif'])
 	rawData['lon'].extend(rawData2['lon'])
 	rawData['lat'].extend(rawData2['lat'])
@@ -352,8 +247,8 @@ def oceanPlots():
 	rcl,rba = plotElem(rawData,bathData,noCheck,noCheck)
 	boxplotCa(rcl,rba,'Bathymetry %s [m]' % ('natl and catl'),'gmtplots/bathymetry%s.ps' % ('natlandcatl') ,'ps',600)
 
-	rawData = readNetcdf('regions/seabed_lithology_cpac.nc',['lon','lat','z'],1,lambda x,y:x%1==0 and y%1==0,lambda z: notNan(z) and z in [4.,5.,6.,9.,13.])
-	rawData2= readNetcdf('regions/seabed_lithology_npac.nc',['lon','lat','z'],1,lambda x,y:x%1==0 and y%1==0,lambda z: notNan(z) and z in [4.,5.,6.,9.,13.])
+	rawData = readNetcdf('regions/seabed_lithology_cpac.nc',1,lambda x,y:x%1==0 and y%1==0,lambda z: notNan(z) and z in [4.,5.,6.,9.,13.])
+	rawData2= readNetcdf('regions/seabed_lithology_npac.nc',1,lambda x,y:x%1==0 and y%1==0,lambda z: notNan(z) and z in [4.,5.,6.,9.,13.])
 	rawData['classif'].extend(rawData2['classif'])
 	rawData['lon'].extend(rawData2['lon'])
 	rawData['lat'].extend(rawData2['lat'])
@@ -364,14 +259,14 @@ def oceanPlots():
 
 def histOceans(binNr,cl,colrs,plotname,res):
 
-	bathData = readNetcdf('gmtplots/netcdffiles/bathymetryMasked.nc',['lon','lat','z'],1,noCheck,lambda bz : bz < 0)
+	bathData = readNetcdf('gmtplots/netcdffiles/bathymetryMasked.nc',1,noCheck,lambda bz : bz < 0)
 	for f in files:
-		rawData = readNetcdf('regions/%s' % (f),['lon','lat','z'],1,lambda x,y:x%1==0 and y%1==0,lambda z: notNan(z) and z == cl)
+		rawData = readNetcdf('regions/%s' % (f),1,lambda x,y:x%1==0 and y%1==0,lambda z: notNan(z) and z == cl)
 		rcl,rba = plotElem(rawData,bathData,noCheck,noCheck)
 		histograms(rba,binNr,colrs,'Bathymetry %s [m]' % (f[-7:-3]),'bathymetry%s%sbins' % (f[-7:-3],binNr),res)
 
-	rawData = readNetcdf('regions/seabed_lithology_catl.nc',['lon','lat','z'],1,lambda x,y:x%1==0 and y%1==0,lambda z: notNan(z) and z == cl)
-	rawData2= readNetcdf('regions/seabed_lithology_natl.nc',['lon','lat','z'],1,lambda x,y:x%1==0 and y%1==0,lambda z: notNan(z) and z == cl)
+	rawData = readNetcdf('regions/seabed_lithology_catl.nc',1,lambda x,y:x%1==0 and y%1==0,lambda z: notNan(z) and z == cl)
+	rawData2= readNetcdf('regions/seabed_lithology_natl.nc',1,lambda x,y:x%1==0 and y%1==0,lambda z: notNan(z) and z == cl)
 	rawData['classif'].extend(rawData2['classif'])
 	rawData['lon'].extend(rawData2['lon'])
 	rawData['lat'].extend(rawData2['lat'])
@@ -379,8 +274,8 @@ def histOceans(binNr,cl,colrs,plotname,res):
 	rcl,rba = plotElem(rawData,bathData,noCheck,noCheck)
 	histograms(rba,binNr,colrs,'Bathymetry %s [m]' % ('natl and catl'),'bathymetryNatlCatl%sbins'%(binNr),res)
 
-	rawData = readNetcdf('regions/seabed_lithology_cpac.nc',['lon','lat','z'],1,lambda x,y:x%1==0 and y%1==0,lambda z: notNan(z) and z == cl)
-	rawData2= readNetcdf('regions/seabed_lithology_npac.nc',['lon','lat','z'],1,lambda x,y:x%1==0 and y%1==0,lambda z: notNan(z) and z == cl)
+	rawData = readNetcdf('regions/seabed_lithology_cpac.nc',1,lambda x,y:x%1==0 and y%1==0,lambda z: notNan(z) and z == cl)
+	rawData2= readNetcdf('regions/seabed_lithology_npac.nc',1,lambda x,y:x%1==0 and y%1==0,lambda z: notNan(z) and z == cl)
 	rawData['classif'].extend(rawData2['classif'])
 	rawData['lon'].extend(rawData2['lon'])
 	rawData['lat'].extend(rawData2['lat'])
@@ -391,7 +286,7 @@ def histOceans(binNr,cl,colrs,plotname,res):
 
 
 def histData(filename,cl):
-	return readNetcdf(filename,['lon','lat','z'],1,lambda x,y:x%1==0 and y%1==0,lambda z:notNan(z) and z == cl)
+	return readNetcdf(filename,1,lambda x,y:x%1==0 and y%1==0,lambda z:notNan(z) and z == cl)
 
 def histograms(data,binNr,colrs,ylab,plotname,res):
 
@@ -411,13 +306,6 @@ def histograms(data,binNr,colrs,ylab,plotname,res):
 '''
 Helper functions
 '''
-
-def filterFun(xi,x):
-	if abs(xi - x) < 1e-5: return True
-	else: return False
-
-def isOcean(x,y):
-	return not Basemap.is_land(m,m(x,y)[0],m(x,y)[1])
 
 def noCheck(*args):
 	return True
@@ -540,9 +428,6 @@ def fullProdMaps():
 			os.system('gmt grdmath '+headers(summer,'summer')+'ADD 0.33333 MUL = gmtplots/productivity/summer'+year+'.nc')
 
 
-def mapXY(x,y):
-	return int(179*(x + 180) + y + 89)
-
 def multivarAnalysis():
 
 	x = np.arange(-180,181)
@@ -572,16 +457,6 @@ def multivarAnalysis():
 	stats = DataFrame([[i+1,xvec[i],yvec[i],sali[i],temp[i],sili[i],nitr[i],phos[i],bath[i],prod[i]] for i in range(len(xvec)) if not np.isnan([i+1,xvec[i],yvec[i],sali[i],temp[i],sili[i],nitr[i],phos[i],bath[i],prod[i]]).any()], index = None , columns = None)
 	stats.to_csv('lithologyStats.m',sep = '\t', index = None , columns = None)
 
-def fillList(li,rawData):
-
-	for i,j in enumerate(rawData['classif']):
-
-		xi = rawData['lon'][i]
-		yi = rawData['lat'][i]
-		ind = mapXY(xi,yi)
-		li[ind] = j
-
-	return li
 
 
 
@@ -602,15 +477,39 @@ def ocean(x,y):
 		return 'sind'
 	if 120 <= x <= 260 and 20 <= y <= 59.5:
 		return 'npac'
+	if (120 <= x <= 180 or -180 <= x <= -100) and  20 <= y <= 59.5:
+		return 'npac'
 	if 120 <= x <= 280 and 0 <= y <= 20:
 		return 'cpac'
 	if 120 <= x <= 290 and -40 <= y <= 0:
 		return 'spac'
+	if (120 <= x <= 180 or -180 <= x <= -80) and 0 <= y <= 20:
+		return 'cpac'
+	if (120 <= x <= 180 or -180 <= x <= -70) and -40 <= y <= 0:
+		return 'spac'
 	if y > 65:
 		return 'arctic'
 	if y < -40:
-		return 'antarctic'
+		return 'ant'
 	return 'none'
+
+
+def pointsInOcean():
+
+	oceans = ['natl','satl','nind','sind','npac','spac','antarctic']
+	for o in oceans:		
+		for i in [20,30,40,50,60]:
+
+			data = readNetcdf('contourCaCO3/caco3%s%s.nc' % (i,o),1,lambda x,y:oceanCheck(x,y,o),notNan)
+			print 'There are %s points in %s for the %s contour file' % (str(np.count_nonzero(data['classif'])),o,str(i))
+			if np.count_nonzero(data['classif']) < 20:
+				print data['lon'],data['lat']
+				plt.clf()
+				plt.plot(data['lon'],data['lat'],'.')
+				plt.show()
+
+
+
 
 
 def histCaOceans(caco3,binNr):
@@ -619,59 +518,35 @@ def histCaOceans(caco3,binNr):
 	conData = readNetcdf('test%s.nc' % (caco3),['lon','lat','z'],1,noCheck,notNan)
 
 	for o in oceans:
-		if o == 'natl':
-			oceanCheck = lambda x,y: ocean(x,y) == o or ocean(x,y) == 'catl'
-		if o == 'npac':
-			oceanCheck = lambda x,y: ocean(x,y) == o or ocean(x,y) == 'cpac'
-		else:
-			oceanCheck = lambda x,y: ocean(x,y) == o
-		bathData = readNetcdf('gmtplots/netcdffiles/bathymetryMasked.nc',['lon','lat','z'],1,oceanCheck,notNan)
+
+		bathData = readNetcdf('gmtplots/netcdffiles/bathymetryMasked.nc',1,oceanCheck,notNan)
 		ccl,cba = plotElem(conData,bathData,noCheck,noCheck)
 		if cba:
 			histograms(cba,binNr,colors[4],'Bathymetry at CaCO3 %s %s' % (caco3,o),'caco3bath%s%sbins%sperc' % (o,binNr,caco3) ,600)
 
-from sklearn.decomposition import RandomizedPCA
-def PCACa():
-
-	caco3 = Dataset('gmtplots/netcdffiles/CaCO3_Archer.nc','r')
-	cax = caco3.variables['lon'][:]
-	cay = caco3.variables['lat'][:]
-	caz = np.ma.getdata(caco3.variables['z'][:][1:-1,:]).flatten()
-
-	bathData = Dataset('gmtplots/netcdffiles/bathymetryMasked.nc','r')
-	nx = bathData.variables['lon'][:]
-	ny = bathData.variables['lat'][:]
-	nz = bathData.variables['z'][:,:].flatten()
-
-	X = np.array([[nz[ i ], j] for i,j in enumerate(caz) if not np.isnan([nz[ i ], j]).any()])
-	pca = RandomizedPCA(n_components=2)
-	pca.fit(X) 
-	print(pca.explained_variance_ratio_) 
-
-	return pca
-
-def dotgramsCaOceans(caco3,binNr):
+def dotgramsCaOceans(caco3,binSpace):
 
 	oceans = {'natl':[0,0],'satl':[0,1],'nind':[1,0],'sind':[1,1],'npac':[2,0],'spac':[2,1],'arctic':[3,0],'antarctic':[3,1]}
-	conData = readNetcdf('caco3%s.nc' % (caco3),['lon','lat','z'],1,noCheck,notNan)
 	
 	f,axarr = plt.subplots(4,2)
 
 	for o,v in oceans.iteritems():
-		if o == 'natl':
-			oceanCheck = lambda x,y: ocean(x,y) == o or ocean(x,y) == 'catl'
-		if o == 'npac':
-			oceanCheck = lambda x,y: ocean(x,y) == o or ocean(x,y) == 'cpac'
-		else:
-			oceanCheck = lambda x,y: ocean(x,y) == o
-		bathData = readNetcdf('gmtplots/netcdffiles/bathymetryMasked.nc',['lon','lat','z'],1,oceanCheck,lambda z:notNan(z) and not nonNegativity(z))
+		print o
+		conData = readNetcdf('CCD/CaCO3contour%s.nc' % (caco3),1,lambda x,y:oceanCheck(x,y,o),notNan)
+		bathData = readNetcdf('CCD/bathymetry01deg.nc',1,lambda x,y:oceanCheck(x,y,o),lambda z:notNan(z) and not nonNegativity(z))
 		ccl,cba = plotElem(conData,bathData,noCheck,noCheck)
-		if not cba:
+		if len(cba) < 2:
 			cba = [-1,-1,-1]
-		axarr[v[0]][v[1]].hist(cba,bins=binNr,color = colors[4])
+			bins = 3
+		else:
+			binsMin = np.floor(np.min(cba) / float(binSpace)) * binSpace
+			binsMax = np.ceil(np.max(cba) / float(binSpace)) * binSpace
+			bins = np.arange(binsMin,binsMax,binSpace)
+
+		axarr[v[0]][v[1]].hist(cba,bins=bins,color = colors[4])
 		axarr[v[0]][v[1]].set_title(o)
 
-	plt.savefig('CCD%s%sbins.png' % (caco3,binNr),format = 'png',dpi = 600)
+	plt.savefig('CCD/CCD%s%sbins.png' % (caco3,binSpace),format = 'png',dpi = 600)
 	plt.show()
 	plt.close()
 
@@ -685,15 +560,17 @@ def histCaAllOceans():
 	for o,v in oceans.iteritems():
 		cbaVec = []
 		for caco3 in [20,30,40,50,60]:	
-			conData = readNetcdf('test%s.nc' % (caco3),['lon','lat','z'],1,noCheck,notNan)
 			if o == 'natl':
 				oceanCheck = lambda x,y: ocean(x,y) == o or ocean(x,y) == 'catl'
 			if o == 'npac':
 				oceanCheck = lambda x,y: ocean(x,y) == o or ocean(x,y) == 'cpac'
 			else:
 				oceanCheck = lambda x,y: ocean(x,y) == o
-			bathData = readNetcdf('gmtplots/netcdffiles/bathymetryMasked.nc',['lon','lat','z'],1,oceanCheck,lambda z:notNan(z) and not nonNegativity(z))
+			conData = readNetcdf('contourCaCO3/caco3%s%s.nc' % (caco3,o),1,noCheck,notNan)
+			bathData = readNetcdf('gmtplots/netcdffiles/bathymetryMasked.nc',1,noCheck,lambda z:notNan(z) and not nonNegativity(z))
+			print len(conData['classif']),len(bathData['classif'])
 			ccl,cba = plotElem(conData,bathData,noCheck,noCheck)
+			print len(cba)
 			
 			if not cba:
 				cba = [0,0,0]
@@ -706,8 +583,75 @@ def histCaAllOceans():
 		for whisker in boxes['whiskers']:
 			whisker.set(color = 'black' ,alpha = 0.4)
 
-		#for cap in boxes['caps']:
-		#	cap.set(color = 'black',alpha = 0.4)
+		for median in boxes['medians']:
+			median.set(color = 'black', alpha = 0.4)
+
+		for flier in boxes['fliers']:
+			flier.set(marker = '.',color = 'black',alpha = 0.4)
+		axarr[v[0]][v[1]].set_title(o)
+		axarr[v[0]][v[1]].set_xticklabels(['20','30','40','50','60'])
+	plt.savefig('oceanBoxplots.png',format = 'png',dpi = 600)
+	plt.show()
+	plt.close()
+
+
+
+def piesAllOceans():
+
+	oceans = {'natl':[0,0],'satl':[0,1],'nind':[1,0],'sind':[1,1],'npac':[2,0],'spac':[2,1],'arctic':[3,0],'ant':[3,1]}
+	
+	f,axarr = plt.subplots(4,2)
+
+	for o,v in oceans.iteritems():
+		if o == 'natl':
+			oceanCheck = lambda x,y: ocean(x,y) == o or ocean(x,y) == 'catl'
+		if o == 'npac':
+			oceanCheck = lambda x,y: ocean(x,y) == o or ocean(x,y) == 'cpac'
+		else:
+			oceanCheck = lambda x,y: ocean(x,y) == o
+		conData = readNetcdf('seabed_lithology_finegrid_weighted_ocean_v61deg.nc',1,oceanCheck,notNan)
+		cbaVec = [conData['classif'].count(i) for i in range(1,14)]
+		print cbaVec
+
+		boxes = axarr[v[0]][v[1]].pie(cbaVec,colors = colors,labels = [str(i) for i in range(1,14)])
+		axarr[v[0]][v[1]].axis('equal')
+		axarr[v[0]][v[1]].set_title(o)
+#	plt.savefig('oceanBoxplots.png',format = 'png',dpi = 600)
+	plt.show()
+	plt.close()
+
+def histCaAllOceans():
+
+	oceans = {'natl':[0,0],'satl':[0,1],'nind':[1,0],'sind':[1,1],'npac':[2,0],'spac':[2,1],'arctic':[3,0],'antarctic':[3,1]}
+	
+	f,axarr = plt.subplots(4,2)
+
+
+	for o,v in oceans.iteritems():
+		cbaVec = []
+		for caco3 in [20,30,40,50,60]:	
+			if o == 'natl':
+				oceanCheck = lambda x,y: ocean(x,y) == o or ocean(x,y) == 'catl'
+			if o == 'npac':
+				oceanCheck = lambda x,y: ocean(x,y) == o or ocean(x,y) == 'cpac'
+			else:
+				oceanCheck = lambda x,y: ocean(x,y) == o
+			conData = readNetcdf('CCD/CaCO3%s.nc' % (caco3),1,oceanCheck,notNan)
+			bathData = readNetcdf('CCD/bathymetry01deg.nc',1,oceanCheck,lambda z:notNan(z) and not nonNegativity(z))
+			print len(conData['classif']),len(bathData['classif'])
+			ccl,cba = plotElem(conData,bathData,noCheck,noCheck)
+			print len(cba)
+			
+			if not cba:
+				cba = [0,0,0]
+			cbaVec.append(cba)
+		boxes = axarr[v[0]][v[1]].boxplot(cbaVec,0,'ko',0.4,patch_artist = True)
+		for box in range(len(boxes['boxes'])):
+			boxes['boxes'][box].set(color = colors[4],alpha = 0.4)
+			boxes['boxes'][box].set(facecolor = colors[4],alpha = 0.4)
+	
+		for whisker in boxes['whiskers']:
+			whisker.set(color = 'black' ,alpha = 0.4)
 
 		for median in boxes['medians']:
 			median.set(color = 'black', alpha = 0.4)
@@ -722,37 +666,125 @@ def histCaAllOceans():
 
 
 '''
-	fig = plt.figure(1,figsize = (6,4))
-	ax = fig.add_subplot(111)
-	boxes = ax.boxplot([i for i in data if i],0,'ko',0.4,patch_artist = True)
-	for box in range(len(boxes['boxes'])):
-		boxes['boxes'][box].set(color = colorsBox[box],alpha = 0.4)
-		boxes['boxes'][box].set(facecolor = colorsBox[box],alpha = 0.4)
-	
-	for whisker in boxes['whiskers']:
-		whisker.set(color = 'black' ,alpha = 0.4)
-
-	#for cap in boxes['caps']:
-	#	cap.set(color = 'black',alpha = 0.4)
-
-	for median in boxes['medians']:
-		median.set(color = 'black', alpha = 0.4)
-
-	for flier in boxes['fliers']:
-		flier.set(marker = '.',color = 'black',alpha = 0.4)
-
-	#ax.set_title('CaCO3 content in different sediments')
-	ax.set_ylabel(ytext)
-	ax.set_xticklabels([str(int(i)) for i in sorted(set(classif))])
-	#Set ticks outwards
-	ax.xaxis.set_ticks_position('bottom')
-	ax.yaxis.set_ticks_position('left')
-	ax.spines['left'].axis.axes.tick_params(direction = 'outward')
-
-	plt.savefig(plotname,format = plotformat,dpi = res)
-	plt.savefig(plotname[:-3]+'.png',format = 'png',dpi = res)
-	plt.clf()
+Formatting .csv files
 '''
+
+years = [str(year) for year in range(1998,2008)]
+months= ['01','02','03','04','05','06','07','08','09','10','11','12']
+sizes = ['micro','nano','pico']
+seasons={'winter':['01','02','03'],'spring':['04','05','06'],'summer':['07','08','09'],'fall':['10','11','12']}
+
+def readCSV(filename):
+
+	lines = open(filename).readlines()
+	cleanData = [cleanLines(l) for l in lines]
+
+	return cleanData
+
+def cleanLines(line):
+
+	l = line.split(';')
+	l[-1] = l[-1][:-1]
+	l = [np.nan if i == 'NA' else i for i in l]
+
+	return l
+
+def writeCSV(data,filename):
+
+	x = np.linspace(-179.5,179.5,360)
+	y = np.linspace(-89.5,89.5,180)
+	with open(filename,'w') as g:
+		for i,xi in enumerate(x):
+			for j,yj in enumerate(y):
+				g.write('%r %r %s\n' % (xi,yj,data[i][j]))
+
+def fileExists(filename):
+
+	return os.path.isfile(filename)
+
+def loopCSV(folder):
+
+	for year,month,size in itertools.product(years,months,sizes):
+		filename = '%s/%s%s-%s.csv' % (folder,year,month,size)
+		if fileExists(filename):
+			newFile = filename[:-3] + 'txt'
+			data = readCSV(filename)
+			writeCSV(data,newFile)
+			print '%s finished' % (filename)
+		else:
+			print '%s doesnt exist' % (filename)
+
+def loopNetcdf(folder):
+
+	for year,month,size in itertools.product(years,months,sizes):
+		filename = '%s/%s%s-%s.txt' % (folder,year,month,size)
+		if fileExists(filename):
+			newFile = filename[:-3] + 'nc'
+			fineGrid= filename[:-4] + '01deg.nc'
+			os.system('gmt xyz2grd %s -G%s -I1 -R-179.5/179.5/-89.5/89.5 -fg' % (filename,newFile))
+			os.system('gmt grdsample %s -G%s -I0.1 -R-180/180/-89/89 -fg' % (newFile,fineGrid))
+			print '%s finished' % (filename)
+		else:
+			print '%s doesnt exist' % (filename)
+
+def addSeasons(folder):
+
+	for year in years:
+		for season in seasons:
+			for size in sizes:
+				filenames = ['%s/%s%s-%s01deg.nc' % (folder,year,month,size) for month in seasons[season]]
+				if all([fileExists(f) for f in filenames]):
+					newFile = '%s/%s%s-%s.nc' % (folder,year,season,size)
+					command = 'gmt grdmath %s %s ADD %s ADD 3 DIV = %s' % (filenames[0],filenames[1],filenames[2],newFile)
+					os.system(command)
+
+
+def boxProdScales(folder):
+
+	plots = {'summer-micro':[0,0],'winter-micro':[0,1],'summer-nano':[1,0],'winter-nano':[1,1],'summer-pico':[2,0],'winter-pico':[2,1]}
+	
+	f,axarr = plt.subplots(3,2)
+
+	data = readNetcdf('seabed_lithology_finegrid_weighted_ocean_v6.nc',1,noCheck,notNan)
+	for o,v in plots.iteritems():
+		data2 = readNetcdf('%s/%s.nc' % (folder,o),1,noCheck,lambda z:notNan(z) and nonNegativity(z))
+		cl,ba = plotElem(data,data2,noCheck,noCheck)
+		da = sortClassif(cl,ba)
+		colorsBox = [colors[int(i) - 1] for i in sorted(set(cl))]
+		print [len(d) for d in da]
+		if not da:
+			da = [-1,-1,-1]
+		boxes = axarr[v[0]][v[1]].boxplot([d for d in da if d],0,'ko',0.4,patch_artist = True)
+		for box in range(len(boxes['boxes'])):
+			boxes['boxes'][box].set(color = colorsBox[box],alpha = 0.4)
+			boxes['boxes'][box].set(facecolor = colorsBox[box],alpha = 0.4)
+	
+		for whisker in boxes['whiskers']:
+			whisker.set(color = 'black' ,alpha = 0.4)
+
+		for median in boxes['medians']:
+			median.set(color = 'black', alpha = 0.4)
+
+		for flier in boxes['fliers']:
+			flier.set(marker = '.',color = 'black',alpha = 0.4)
+		axarr[v[0]][v[1]].set_title(o)
+		axarr[v[0]][v[1]].set_ylabel('Productivity [g C m**-2 d**-1]')
+		axarr[v[0]][v[1]].set_xticklabels([str(int(i)) for i in sorted(set(cl))])
+	plt.savefig('productivityBoxplots.png',format = 'png',dpi = 600)
+	plt.show()
+	plt.close()
+
+
+def sortClassif(cl,ba):
+
+	data = [[] for i in range(len(classifications))]
+	for i,j in enumerate(cl):
+		ind = int(j) - 1
+		data[ind].append(ba[i])
+	return data
+
+
+
 
 
 
