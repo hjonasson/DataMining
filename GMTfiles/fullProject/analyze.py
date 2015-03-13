@@ -46,8 +46,7 @@ def readTxt(filename,xyCheck,zCheck,comment,nans):
 
 	d = {}
 	d['lon'],d['lat'],d['classif'] = np.loadtxt(filename,comments = comment).T
-	data = filterLi(d['lon'],d['lat'],d['classif'],xyCheck,zCheck)
-	return data
+	return filterLi(d['lon'],d['lat'],d['classif'],xyCheck,zCheck)
 
 def filterLi(x,y,z,xyCheck,zCheck):
 
@@ -59,6 +58,17 @@ def filterLi(x,y,z,xyCheck,zCheck):
 			data['lat'].append(yi)
 			data['classif'].append(zi)
 
+	return data
+
+def addData(x,y,z,xyCheck,zCheck,data):
+
+	if x and y and z:
+		xi,yi,zi = x.pop(0),y.pop(0),z.pop(0)
+		if xyCheck(xi,yi) and zCheck(zi):
+			data['lon'].append(xi)
+			data['lat'].append(yi)
+			data['classif'].append(zi)
+		return addData(x,y,z,xyCheck,zCheck,data)
 	return data
 
 def readNetcdf(ncFile,ptsPerDeg,xyCheck,zCheck):
@@ -91,8 +101,9 @@ def loopReadFile(nx,ny,nz,xyCheck,zCheck):
 
 def rollOff2pi(xi):
 
-	while not -180 < xi < 180:
+	while not -180 <= xi <= 180:
 		xi = xi - np.sign(xi) * 360
+		print xi
 	return xi
 
 
@@ -741,20 +752,20 @@ def addSeasons(folder):
 
 def boxProdScales(folder):
 
-	plots = {'summer-micro':[0,0],'winter-micro':[0,1],'summer-nano':[1,0],'winter-nano':[1,1],'summer-pico':[2,0],'winter-pico':[2,1]}
-	
-	f,axarr = plt.subplots(3,2)
+	#plots = {'summer-micro':[0,0],'winter-micro':[0,1],'summer-nano':[1,0],'winter-nano':[1,1],'summer-pico':[2,0],'winter-pico':[2,1]}
+	plots = {'summer':[0,0],'winter':[0,1]}
+	f,axarr = plt.subplots(1,2,squeeze=False)
 
 	data = readNetcdf('seabed_lithology_finegrid_weighted_ocean_v6.nc',1,noCheck,notNan)
+	print 'read lith data'
 	for o,v in plots.iteritems():
-		data2 = readNetcdf('%s/%s.nc' % (folder,o),1,noCheck,lambda z:notNan(z) and nonNegativity(z))
+		data2 = readNetcdf('%s/AMODIS_%s.nc' % (folder,o),1,noCheck,lambda z:notNan(z) and nonNegativity(z) and z < 0.5)
+		print 'data read for %s' % (o)
 		cl,ba = plotElem(data,data2,noCheck,noCheck)
+		print 'data sorted for %s' % (o)
 		da = sortClassif(cl,ba)
 		colorsBox = [colors[int(i) - 1] for i in sorted(set(cl))]
-		print [len(d) for d in da]
-		if not da:
-			da = [-1,-1,-1]
-		boxes = axarr[v[0]][v[1]].boxplot([d for d in da if d],0,'ko',0.4,patch_artist = True)
+		boxes = axarr[v[0]][v[1]].boxplot([d for d in da if d],0,'ko',0.4,showfliers=False,patch_artist = True)
 		for box in range(len(boxes['boxes'])):
 			boxes['boxes'][box].set(color = colorsBox[box],alpha = 0.4)
 			boxes['boxes'][box].set(facecolor = colorsBox[box],alpha = 0.4)
@@ -770,7 +781,7 @@ def boxProdScales(folder):
 		axarr[v[0]][v[1]].set_title(o)
 		axarr[v[0]][v[1]].set_ylabel('Productivity [g C m**-2 d**-1]')
 		axarr[v[0]][v[1]].set_xticklabels([str(int(i)) for i in sorted(set(cl))])
-	plt.savefig('productivityBoxplots.png',format = 'png',dpi = 600)
+	plt.savefig('productivityBoxplotsAMODIS.png',format = 'png',dpi = 600)
 	plt.show()
 	plt.close()
 
@@ -782,6 +793,107 @@ def sortClassif(cl,ba):
 		ind = int(j) - 1
 		data[ind].append(ba[i])
 	return data
+
+
+def convertGrdToNc():
+
+	for year,month in itertools.product([str(i) for i in range(2003,2014)],months):
+		filename = 'AMODIS_dia_%s%s_10min_mean.' % (year,month) 
+		os.system('gmt grdreformat %sgrd* %snc -fg' % (filename,filename))
+
+def resample():
+
+	for year,month in itertools.product([str(i) for i in range(2003,2014)],months):
+		filename = 'AMODIS_dia_%s%s_10min_mean' % (year,month) 
+		os.system('gmt grdsample %s.nc -G%s01deg.nc -I0.1 -R-180/180/-88/88 -fg' % (filename,filename))
+
+years = [str(year) for year in range(2003,2014)]
+months= ['01','02','03','04','05','06','07','08','09','10','11','12']
+sizes = ['micro','nano','pico']
+seasons={'winter':['01','02','03'],'spring':['04','05','06'],'summer':['07','08','09'],'fall':['10','11','12']}
+
+def meanSeasons():
+
+	for season in seasons:
+		count = 0
+		command = 'gmt grdmath '
+		for year in years:
+			for month in seasons[season]:
+				filename = 'AMODIS_dia_%s%s_10min_mean01deg.nc ' % (year,month)
+				command += filename
+				if count != 0:
+					command += 'ADD '
+				count += 1
+		command += '%r DIV = AMODIS_dia_%s.nc' % (count,season)
+		os.system(command)
+
+def meanSeasonsStack():
+
+	for season in seasons:
+		files = []
+		for year in years:
+			for month in seasons[season]:
+				filename = 'AMODIS_dia_%s%s_10min_mean01deg.nc' % (year,month)
+				print month
+				if fileExists(filename):
+					files.append(readNetcdf(filename,1,noCheck,noCheck))
+				print month
+		if files:	
+			g = open('AMODIS_%s.nc' % (season),'w')
+			for i,j in enumerate(files[0]['classif']):
+				count = 0
+				zij = 0
+				for f in files:
+					zi = j
+					if not np.isnan(zi):
+						zij+= zi
+						count += 1
+				if count:
+					zij /= count
+				g.write('%r %r %r\n' % (f['lon'][i],f['lat'][i],zij))
+				print float(i)/len(files[0]['classif'])
+			g.close()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
